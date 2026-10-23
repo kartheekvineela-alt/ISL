@@ -5,15 +5,12 @@ import json
 import threading
 import zipfile
 from argparse import Namespace
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-from signvaani.data import index_clips
-from signvaani.include_dataset import HOSPITAL_MAP, convert, main, sign_label, videos
-
-VOCAB = Path(__file__).resolve().parents[1] / "configs" / "vocabulary.json"
+from signvaani.data import index_clips, vocabulary
+from signvaani.include_dataset import convert, main, sign_label, videos
 
 
 def test_sign_labels():
@@ -37,9 +34,9 @@ def test_official_splits():
 
 
 def test_hospital_subset_uses_vocabulary_labels():
-    vocab = set(json.loads(VOCAB.read_text())["signs"])
-    assert set(HOSPITAL_MAP) <= {v.sign for v in videos("include")}
-    assert {v.sign for v in videos("hospital")} == set(HOSPITAL_MAP.values()) <= vocab
+    hospital = videos("hospital")
+    assert {v.sign for v in hospital} == {"ME", "DOCTOR", "MEDICINE"} <= set(vocabulary())  # INCLUDE "I" -> ME
+    assert len(hospital) == 49
 
 
 class FakeHolistic:
@@ -88,7 +85,7 @@ def test_convert_writes_signvaani_layout(tmp_path):
 def test_download_picks_archives_checks_md5_and_unzips(tmp_path):
     srv, raw = tmp_path / "srv", tmp_path / "raw"
     srv.mkdir()
-    for category in ["Jobs", "Pronouns", "People", "Society", "Days_and_Time", "Animals"]:
+    for category in ["Jobs", "Pronouns", "Society", "People", "Animals"]:
         with zipfile.ZipFile(srv / f"{category}_1of1.zip", "w") as z:
             z.writestr(f"{category}/1. Sign/MVI_0001.MOV", category.encode())
     server = http.server.ThreadingHTTPServer(
@@ -103,5 +100,5 @@ def test_download_picks_archives_checks_md5_and_unzips(tmp_path):
     finally:
         server.shutdown()
     assert (raw / "Jobs" / "1. Sign" / "MVI_0001.MOV").read_bytes() == b"Jobs"
-    assert not (raw / "Animals").exists()  # no hospital sign in that category
+    assert not (raw / "People").exists() and not (raw / "Animals").exists()  # no hospital sign there
     assert not list((raw / "zips").glob("*.zip"))  # archives removed after unpacking

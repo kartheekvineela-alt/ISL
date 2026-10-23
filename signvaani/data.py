@@ -4,7 +4,9 @@ Expected layout (one raw clip per file, shape (T, 63, 3), NaN = not detected):
 
     data/keypoints/<SIGN>/<signer>_<take>.npy      e.g. data/keypoints/PAIN/s03_2.npy
 """
+import json
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +14,22 @@ import numpy as np
 
 from .augment import augment
 from .landmarks import preprocess
+
+VOCAB = Path(__file__).resolve().parents[1] / "configs" / "vocabulary.json"
+# Signers are anonymous IDs (s01, s02, ...), never names.
+SIGNER_ID = re.compile(r"s\d+")
+CLIP_NAME = re.compile(rf"({SIGNER_ID.pattern})_(\d+)")
+
+
+def vocabulary(path=VOCAB):
+    """The frozen sign list of configs/vocabulary.json, in recording order."""
+    return json.loads(Path(path).read_text(encoding="utf-8"))["signs"]
+
+
+def recorded_takes(sign_dir, signer):
+    """Take numbers already saved for one signer in one sign folder."""
+    names = (CLIP_NAME.fullmatch(p.stem) for p in Path(sign_dir).glob(f"{signer}_*.npy"))
+    return sorted(int(m.group(2)) for m in names if m and m.group(1) == signer)
 
 
 @dataclass(frozen=True)
