@@ -17,6 +17,22 @@ Webcam -> MediaPipe Holistic (hands, pose, face) -> 63 landmarks -> normalise + 
 | `ISL_Sign_to_Speech_Project_Blueprint.pdf` | Full project blueprint (8-week version, tech stack, features) |
 | `SignVaani_Research_Paper_IEEE_Draft.pdf` | IEEE-format paper template (replace every `[XX]` with measured results) |
 | `ISL_Literature_Survey_with_Links.pdf` | 24 related papers with links and the research gap |
+| `SignVaani_ISL_Dataset_Guide.pdf` | Dataset choice, recording protocol, datasheet and privacy checklist |
+
+## Dataset
+
+- **Public baseline: [INCLUDE](data/include/README.md)** (AI4Bharat). It has isolated ISL signs, 263 classes and
+  4,292 videos. The official split lists and class table are in `data/include/`. The videos are downloaded
+  and converted by `signvaani.include_dataset`.
+- **Final result: your own hospital recordings** (`signvaani.record`, `configs/vocabulary.json`), tested on
+  signers who are not in the training set. Fill in `data/DATASHEET.md`.
+
+```bash
+python -m signvaani.include_dataset download --subset include50
+python -m signvaani.include_dataset convert --subset include50 --workers 4
+python -m signvaani.train --data data/include_keypoints/include50 --test-signers test --val-signers val \
+    --out models/include50.pt
+```
 
 ## Setup
 
@@ -66,6 +82,7 @@ To check the pipeline before you have real data:
 | `signvaani/sentence.py`, `rules.json` | ISL gloss order -> English / Hindi sentences |
 | `signvaani/speech.py` | Text-to-speech (pyttsx3 offline English, gTTS Hindi) |
 | `signvaani/record.py`, `app.py` | Guided recorder and live app |
+| `signvaani/include_dataset.py` | INCLUDE download and video-to-keypoint conversion |
 | `configs/vocabulary.json` | Sign list |
 
 ## Results

@@ -8,6 +8,7 @@ venv/
 data/keypoints/
 data/synthetic/
 data/raw_videos/
+data/include_keypoints/
 
 # Training outputs
 runs/
