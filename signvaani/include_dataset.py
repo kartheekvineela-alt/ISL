@@ -28,6 +28,7 @@ from pathlib import Path, PurePosixPath
 
 import numpy as np
 
+from .data import vocabulary
 from .landmarks import frame_keypoints, hands_visible
 
 SPLITS = Path(__file__).resolve().parents[1] / "data" / "include" / "splits"
@@ -35,9 +36,14 @@ ZENODO_RECORD = "https://zenodo.org/api/records/4010759"
 SUBSETS = ("include", "include50", "hospital")
 VIDEO_EXT = {".mov", ".mp4", ".avi", ".mkv"}
 
-# INCLUDE sign -> configs/vocabulary.json sign (hospital subset).
-HOSPITAL_MAP = {"I": "ME", "YOU": "YOU", "DOCTOR": "DOCTOR", "FAMILY": "FAMILY",
-                "MEDICINE": "MEDICINE", "TODAY": "TODAY", "YESTERDAY": "YESTERDAY"}
+# INCLUDE labels that differ from the configs/vocabulary.json label of the same sign.
+RENAME = {"I": "ME"}
+
+
+def hospital_label(sign, vocab):
+    """Vocabulary label of an INCLUDE sign, or None when the vocabulary does not have it."""
+    label = RENAME.get(sign, sign)
+    return label if label in vocab else None
 
 
 @dataclass(frozen=True)
@@ -64,6 +70,7 @@ def videos(subset="include", splits_dir=SPLITS):
     if subset not in SUBSETS:
         raise ValueError(f"unknown subset {subset!r}, choose from {SUBSETS}")
     source = "include50" if subset == "include50" else "include"
+    vocab = set(vocabulary()) if subset == "hospital" else None
     out = []
     for split in ("train", "val", "test"):
         for line in (Path(splits_dir) / f"{source}_{split}.txt").read_text().splitlines():
@@ -71,10 +78,10 @@ def videos(subset="include", splits_dir=SPLITS):
                 continue
             parts = PurePosixPath(line.strip()).parts
             sign = sign_label(parts[1])
-            if subset == "hospital":
-                if sign not in HOSPITAL_MAP:
+            if vocab is not None:
+                sign = hospital_label(sign, vocab)
+                if sign is None:
                     continue
-                sign = HOSPITAL_MAP[sign]
             out.append(Video(line.strip(), parts[0], sign, split))
     return out
 
@@ -270,6 +277,7 @@ def classes_csv(splits_dir=SPLITS):
     """One CSV row per INCLUDE sign: category, folder, label, clips per split, subsets."""
     rows = {}
     include50 = {v.sign for v in videos("include50", splits_dir)}
+    vocab = set(vocabulary())
     for v in videos("include", splits_dir):
         folder = PurePosixPath(v.rel).parts[1]
         row = rows.setdefault(v.sign, {"category": v.category, "folder": folder, "train": 0, "val": 0, "test": 0})
@@ -277,7 +285,7 @@ def classes_csv(splits_dir=SPLITS):
     lines = ["category,folder,sign,train,val,test,include50,hospital_sign"]
     for sign, r in sorted(rows.items(), key=lambda kv: (kv[1]["category"], kv[0])):
         lines.append(f'{r["category"]},"{r["folder"]}",{sign},{r["train"]},{r["val"]},{r["test"]},'
-                     f'{"yes" if sign in include50 else ""},{HOSPITAL_MAP.get(sign, "")}')
+                     f'{"yes" if sign in include50 else ""},{hospital_label(sign, vocab) or ""}')
     return "\n".join(lines) + "\n"
 
 

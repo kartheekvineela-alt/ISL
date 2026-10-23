@@ -1,0 +1,16 @@
+{
+  "_note": "FROZEN on Day 1 (1-week blueprint, Section 2.2): the sentences the demo must produce. glosses are signed in this ISL order; en and hi are the exact expected outputs. Have every Hindi sentence checked by a native speaker.",
+  "sentences": [
+    {"id": "S1", "glosses": ["ME", "HEAD", "PAIN"], "en": "My head hurts.", "hi": "मेरे सिर में दर्द है।", "hi_latin": "Mere sir mein dard hai."},
+    {"id": "S2", "glosses": ["ME", "STOMACH", "PAIN"], "en": "My stomach hurts.", "hi": "मेरे पेट में दर्द है।", "hi_latin": "Mere pet mein dard hai."},
+    {"id": "S3", "glosses": ["ME", "FEVER"], "en": "I have a fever.", "hi": "मुझे बुखार है।", "hi_latin": "Mujhe bukhaar hai."},
+    {"id": "S4", "glosses": ["ME", "NEED", "WATER"], "en": "I need water.", "hi": "मुझे पानी चाहिए।", "hi_latin": "Mujhe paani chahiye."},
+    {"id": "S5", "glosses": ["ME", "NEED", "MEDICINE"], "en": "I need medicine.", "hi": "मुझे दवा चाहिए।", "hi_latin": "Mujhe dawa chahiye."},
+    {"id": "S6", "glosses": ["ME", "NEED", "TOILET"], "en": "I need to use the toilet.", "hi": "मुझे शौचालय जाना है।", "hi_latin": "Mujhe shauchaalay jaana hai."},
+    {"id": "S7", "glosses": ["TOILET", "WHERE"], "en": "Where is the toilet?", "hi": "शौचालय कहाँ है?", "hi_latin": "Shauchaalay kahaan hai?"},
+    {"id": "S8", "glosses": ["DOCTOR", "CALL"], "en": "Please call the doctor.", "hi": "कृपया डॉक्टर को बुलाइए।", "hi_latin": "Kripya doctor ko bulaiye."},
+    {"id": "S9", "glosses": ["HELP"], "en": "Please help me.", "hi": "कृपया मेरी मदद कीजिए।", "hi_latin": "Kripya meri madad kijiye."},
+    {"id": "S10a", "glosses": ["YES"], "en": "Yes.", "hi": "हाँ।", "hi_latin": "Haan."},
+    {"id": "S10b", "glosses": ["NO"], "en": "No.", "hi": "नहीं।", "hi_latin": "Nahin."}
+  ]
+}

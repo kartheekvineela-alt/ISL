@@ -3,6 +3,10 @@
 B.Tech CSE III-year mini-project. SignVaani recognises Indian Sign Language (ISL) signs from a normal webcam,
 turns them into a grammatical sentence and speaks it in English or Hindi, on a laptop CPU.
 
+Scope (frozen on Day 1 of the 1-week blueprint): 15 hospital signs + `IDLE` in `configs/vocabulary.json`
+(ME, DOCTOR, PAIN, FEVER, HEAD, STOMACH, WATER, MEDICINE, TOILET, HELP, NEED, CALL, WHERE, YES, NO) and the demo
+sentences S1-S10 in `configs/sentences.json`. Day 1 runbook: [`docs/day1.md`](docs/day1.md).
+
 ```
 Webcam -> MediaPipe Holistic (hands, pose, face) -> 63 landmarks -> normalise + velocity (32 x 378)
        -> motion-based sign spotting + IDLE class -> BiGRU classifier (ONNX)
@@ -18,6 +22,11 @@ Webcam -> MediaPipe Holistic (hands, pose, face) -> 63 landmarks -> normalise + 
 | `SignVaani_Research_Paper_IEEE_Draft.pdf` | IEEE-format paper template (replace every `[XX]` with measured results) |
 | `ISL_Literature_Survey_with_Links.pdf` | 24 related papers with links and the research gap |
 | `SignVaani_ISL_Dataset_Guide.pdf` | Dataset choice, recording protocol, datasheet and privacy checklist |
+| `day1.md` | Day 1 runbook: tasks, commands and exit criteria |
+| `SRS.md`, `diagrams/` | Software requirements with traceability; architecture and DFD 0 (`.drawio` + `.svg`) |
+| `recording_protocol.md` | Recording session checklist, consent form and consent register |
+| `sign_verification.md` | Sign references, ISL-user check and Hindi sentence check |
+| `daily_log.md` | Daily stand-up log for Days 1-7 |
 
 ## Dataset
 
@@ -43,14 +52,16 @@ python -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
+python -m signvaani.check_install    # must end with OK; add --camera 0 to measure webcam FPS
 python -m pytest -q                  # all tests should pass
 ```
 
 ## Usage
 
 ```bash
-# 1. Record your dataset (keypoints only, no video is saved)
-python -m signvaani.record --signer s01 --takes 10
+# 1. Record your dataset (keypoints only, no video is saved; re-running tops up, never overwrites)
+python -m signvaani.record --signer s01                # 16 signs x 10 takes
+python -m signvaani.check_data --signers s01           # layout, format, takes, hand tracking
 
 # 2. Train and evaluate (signer-independent is the number to report)
 python -m signvaani.train --data data/keypoints --loso
@@ -82,8 +93,9 @@ To check the pipeline before you have real data:
 | `signvaani/sentence.py`, `rules.json` | ISL gloss order -> English / Hindi sentences |
 | `signvaani/speech.py` | Text-to-speech (pyttsx3 offline English, gTTS Hindi) |
 | `signvaani/record.py`, `app.py` | Guided recorder and live app |
+| `signvaani/check_install.py`, `check_data.py` | Install check; recorded-data check and wrist-path plots |
 | `signvaani/include_dataset.py` | INCLUDE download and video-to-keypoint conversion |
-| `configs/vocabulary.json` | Sign list |
+| `configs/vocabulary.json`, `sentences.json` | Frozen sign list (15 signs + IDLE) and demo sentences S1-S10 |
 
 ## Results
 

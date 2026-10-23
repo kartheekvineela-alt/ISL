@@ -31,10 +31,12 @@ licence is on the Zenodo record, so check it before redistributing anything. Dow
 |---|---|---|---|
 | `include50` | 50 | 958 | Quick baseline on the official benchmark subset |
 | `include` | 263 | 4,292 | Full benchmark and pre-training |
-| `hospital` | 7 | 115 | INCLUDE clips of signs already in `configs/vocabulary.json`, saved under the vocabulary label: I→`ME`, `YOU`, `DOCTOR`, `FAMILY`, `MEDICINE`, `TODAY`, `YESTERDAY` |
+| `hospital` | 3 | 49 | INCLUDE clips of signs in the frozen `configs/vocabulary.json`, saved under the vocabulary label: I→`ME`, `DOCTOR`, `MEDICINE` |
 
-Other INCLUDE signs that fit the hospital domain but are not in the vocabulary yet: `PATIENT`, `HOSPITAL`,
-`SICK`, `HEALTHY`, `HOT`, `COLD`, `HELLO`, `THANK-YOU`, `BATHROOM`, `BED`, `MOTHER`, `FATHER`.
+The `hospital` subset follows `configs/vocabulary.json`, which is frozen at 15 signs + `IDLE` for the
+1-week plan. Other INCLUDE signs that fit the hospital domain, for future scope: `YOU`, `FAMILY`, `TODAY`,
+`YESTERDAY`, `PATIENT`, `HOSPITAL`, `SICK`, `HEALTHY`, `HOT`, `COLD`, `HELLO`, `THANK-YOU`, `BATHROOM`,
+`BED`, `MOTHER`, `FATHER`.
 
 ## Get and convert the data
 
@@ -47,7 +49,7 @@ python -m signvaani.include_dataset convert  --subset include50 --workers 4
 If the script cannot reach Zenodo, download the zip files from the record page in a browser, unzip them
 anywhere under `data/raw_videos/include/`, and run `convert`. It finds each video by its sign folder and
 file name, however the archives were nested. INCLUDE-50 videos are spread across all 15 category archives,
-so `include50` needs the whole download. `hospital` only needs 5 categories.
+so `include50` needs the whole download. `hospital` only needs 3 categories (Pronouns, Jobs, Society).
 
 `convert` runs MediaPipe Holistic on every frame. It saves `(T, 63, 3)` float32 arrays with NaN for missed
 points, the same format that `signvaani.record` writes:
@@ -81,7 +83,7 @@ on INCLUDE folders, because `train`, `val` and `test` would each become a fake "
 - The official split is **not signer-independent**: the same people can appear in train and test. Report
   it as "INCLUDE official split", never as the unseen-signer result.
 - All recordings come from Chennai, so other regional ISL variants may differ.
-- Only 7 of the 41 vocabulary signs exist in INCLUDE, and there is no `IDLE` class. The final hospital
+- Only 3 of the 15 frozen signs exist in INCLUDE, and there is no `IDLE` class. The final hospital
   model still needs your own consented recordings (guide, section 2.4).
 
 ## Citation
