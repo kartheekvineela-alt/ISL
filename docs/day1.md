@@ -52,6 +52,11 @@ python -m signvaani.check_data --data runs/recorder_test --signs PAIN IDLE --tak
 - Hold your hands out of the frame during a PAIN take: the recorder must reject it and retry (TC-04).
 - `runs/` is git-ignored; delete `runs/recorder_test` when done.
 
+The recorder logic has already been run with real MediaPipe 0.10.14, using a photo of a person in place
+of a camera: hidden hands were rejected, missing hands were saved as NaN, a re-run topped up without
+overwriting, and `check_data` passed. This test covers what only a laptop can show: the camera opens,
+the frame rate, the window and keys (`r`, `k`, `q`), and real signing under your lighting.
+
 ### 11:00-13:00, D: SRS and diagrams
 
 Review `docs/SRS.md` with the team and fill in the [XX] cells of Section 3.6 for your laptops. Open
