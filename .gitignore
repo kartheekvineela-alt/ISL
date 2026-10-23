@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Signer data stays private unless consent allows release
+data/keypoints/
+data/synthetic/
+data/raw_videos/
+
+# Training outputs
+runs/
+models/*.pt

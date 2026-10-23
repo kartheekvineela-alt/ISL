@@ -1,0 +1,13 @@
+{
+  "domain": "hospital",
+  "_note": "Verify each sign with the ISLRTC dictionary and an ISL user. IDLE is required: record resting hands and natural non-sign movement.",
+  "signs": [
+    "IDLE",
+    "ME", "YOU", "DOCTOR", "NURSE", "FAMILY",
+    "PAIN", "FEVER", "COUGH", "VOMIT", "DIZZY", "BLEEDING", "BREATHING-PROBLEM", "ALLERGY",
+    "HEAD", "STOMACH", "CHEST", "TOOTH", "EAR", "EYE", "LEG", "HAND",
+    "HELP", "WATER", "MEDICINE", "TOILET", "FOOD", "SLEEP", "CALL", "WAIT", "INJECTION", "NEED",
+    "WHERE", "WHAT", "WHEN", "HOW-MUCH", "YES", "NO", "NOT",
+    "TODAY", "YESTERDAY", "VERY"
+  ]
+}

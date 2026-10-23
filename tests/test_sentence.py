@@ -1,0 +1,35 @@
+import json
+from pathlib import Path
+
+from signvaani.sentence import RULES_PATH, SentenceBuilder
+
+b = SentenceBuilder()
+
+
+def test_isl_word_order_to_english():
+    assert b.build(["ME", "STOMACH", "PAIN"]) == ("My stomach hurts.", True)
+    assert b.build(["ME", "PAIN", "HEAD"])[0] == "My head hurts."
+    assert b.build(["ME", "FEVER", "YESTERDAY"])[0] == "I have had a fever since yesterday."
+    assert b.build(["TOILET", "WHERE"])[0] == "Where is the toilet?"
+    assert b.build(["DOCTOR", "CALL"])[0] == "Please call the doctor."
+    assert b.build(["ME", "NEED", "WATER"])[0] == "I need water."
+
+
+def test_hindi():
+    assert b.build(["ME", "STOMACH", "PAIN"], "hi")[0] == "मेरे पेट में दर्द है।"
+    assert b.build(["ME", "NEED", "WATER"], "hi")[0] == "मुझे पानी चाहिए।"
+
+
+def test_repeats_and_idle_ignored():
+    assert b.build(["HELP", "HELP", "IDLE"])[0] == "Please help me."
+
+
+def test_fallback():
+    text, matched = b.build(["WATER", "TODAY"])
+    assert not matched and text == "Water today."
+
+
+def test_every_vocabulary_sign_is_in_lexicon():
+    vocab = json.loads((Path(__file__).parents[1] / "configs" / "vocabulary.json").read_text())["signs"]
+    lexicon = json.loads(RULES_PATH.read_text(encoding="utf-8"))["lexicon"]
+    assert [s for s in vocab if s != "IDLE" and s not in lexicon] == []
