@@ -46,10 +46,14 @@ python -m signvaani.include_dataset download --subset include50             # Ze
 python -m signvaani.include_dataset convert  --subset include50 --workers 4
 ```
 
+`download` fetches one archive at a time, unpacks only the videos of the chosen subset and deletes the
+archive (`--keep-zips` keeps it, `--all-videos` unpacks everything). INCLUDE-50 videos are spread across
+all 15 category archives, so `include50` downloads every archive but keeps only its 958 videos on disk.
+`hospital` only needs 3 categories (Pronouns, Jobs, Society).
+
 If the script cannot reach Zenodo, download the zip files from the record page in a browser, unzip them
 anywhere under `data/raw_videos/include/`, and run `convert`. It finds each video by its sign folder and
-file name, however the archives were nested. INCLUDE-50 videos are spread across all 15 category archives,
-so `include50` needs the whole download. `hospital` only needs 3 categories (Pronouns, Jobs, Society).
+file name, however the archives were nested.
 
 `convert` runs MediaPipe Holistic on every frame. It saves `(T, 63, 3)` float32 arrays with NaN for missed
 points, the same format that `signvaani.record` writes:
@@ -72,7 +76,10 @@ This reproduces the official split:
 python -m signvaani.train --data data/include_keypoints/include50 --test-signers test --val-signers val \
     --out models/include50.pt
 python -m signvaani.evaluate --ckpt models/include50.pt --data data/include_keypoints/include50 --signers test
+python -m signvaani.confusion runs/signer_gru_<time>.json --out runs/confusion/include50
 ```
+
+This is the Day 3 pipeline check on real signing (`docs/day3.md`).
 
 To use the `hospital` clips as extra training data, copy `data/include_keypoints/hospital/*` into
 `data/keypoints/` and hold out your own signers with `--test-signers` / `--val-signers`. Do not use `--loso`

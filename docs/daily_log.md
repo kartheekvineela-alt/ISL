@@ -17,24 +17,29 @@ for s01; vocabulary and sentence list frozen and committed.
 
 ## Day 2: full dataset and quality control. Date: ________
 
+Runbook: `docs/day2.md`.
+
 | Member | Done yesterday | Plan today | Blockers | Exit criteria met? |
 |---|---|---|---|---|
-| A | | | | |
-| B | | | | |
-| C | | | | |
-| D | | | | |
+| A | | Record s02-s05 with varied conditions; QC (`signvaani.qc`), review flagged takes, re-record SHORT signs; DATASHEET.md | | |
+| B | | Dataset stats (`signvaani.dataset_stats`); start the INCLUDE-50 download and conversion; QC with A | | |
+| C | | Sentence tests for S1-S10 (`tests/test_sentence.py`); Hindi check with a native speaker | | |
+| D | | Record s02-s05 with A; use-case and sequence diagrams; report Chapters 1-2 | | |
 
 Exit criteria: about 800 clips (5 signers x 16 classes x at least 8 good takes); dataset stats table and
 datasheet committed; sentence unit tests pass for S1-S10.
 
 ## Day 3: baseline model and honest evaluation. Date: ________
 
+Runbook: `docs/day3.md`. LOSO per signer: s01 ___ s02 ___ s03 ___ s04 ___ s05 ___ mean ___ ± ___.
+Spotter values tuned: `--on` ___ `--off` ___ `--quiet-frames` ___ (room: ________).
+
 | Member | Done yesterday | Plan today | Blockers | Exit criteria met? |
 |---|---|---|---|---|
-| A | | | | |
-| B | | | | |
-| C | | | | |
-| D | | | | |
+| A | | Inspect the top-5 confused pairs with B; fix data causes (`qc --reject`, re-record); LOSO again | | |
+| B | | INCLUDE-50 pipeline check; random split, then LOSO; confusion analysis (`signvaani.confusion`) | | |
+| C | | Live app with the first checkpoint; tune `--on` / `--off` / `--quiet-frames` | | |
+| D | | Report Chapters 3 (SRS) and 4 (design) with the diagrams | | |
 
 Exit criteria: baseline LOSO mean accuracy recorded with per-signer numbers; confused pairs identified
 with a reason for each; if LOSO is below 60%, apply fallback F2/F3 before Day 4.

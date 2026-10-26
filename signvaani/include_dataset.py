@@ -29,7 +29,7 @@ from pathlib import Path, PurePosixPath
 import numpy as np
 
 from .data import vocabulary
-from .landmarks import frame_keypoints, hands_visible
+from .landmarks import frame_keypoints, hands_share
 
 SPLITS = Path(__file__).resolve().parents[1] / "data" / "include" / "splits"
 ZENODO_RECORD = "https://zenodo.org/api/records/4010759"
@@ -127,6 +127,16 @@ def _key(name):
     return re.sub(r"[^a-z]", "", name.lower())
 
 
+def video_keys(wanted):
+    """(sign label of the class folder, file name) of each wanted video."""
+    return {(sign_label(PurePosixPath(v.rel).parts[1]), PurePosixPath(v.rel).name) for v in wanted}
+
+
+def is_wanted(parts, keys):
+    """True when the file at path parts (folders..., name) is a wanted video, however deep it is nested."""
+    return any((sign_label(d), parts[-1]) in keys for d in parts[:-1])
+
+
 def download(args):
     categories = sorted({v.category for v in videos(args.subset)})
     files = [f for f in zenodo_files(args.record) if f[0].lower().endswith(".zip")]
@@ -136,22 +146,31 @@ def download(args):
             raise SystemExit(f"no archive matches {missing}; archives in the record: {[f[0] for f in files]}. "
                              "Use --all to download everything.")
         files = [f for f in files if any(_key(f[0]).startswith(_key(c)) for c in categories)]
-    print(f"{len(files)} archives, {sum(f[1] or 0 for f in files) / 1e9:.1f} GB in total:")
+    # Only the subset's videos are unpacked: include50 needs every archive but keeps 958 of 4,292 videos.
+    keys = video_keys(videos(args.subset))
+    scope = "all" if args.all_videos or args.subset == "include" else args.subset
+    print(f"{len(files)} archives, {sum(f[1] or 0 for f in files) / 1e9:.1f} GB to download:")
     for name, size, _, _ in files:
         print(f"  {name}  {(size or 0) / 1e9:.2f} GB")
+    print("every video is unpacked" if scope == "all" else
+          f"only the {len(keys)} {args.subset} videos are unpacked, one archive at a time")
     if args.dry_run:
         return
     raw, zips = Path(args.raw), Path(args.raw) / "zips"
     zips.mkdir(parents=True, exist_ok=True)
     for name, size, md5, url in files:
-        done = zips / (name + ".extracted")
-        if done.exists():
+        # name.extracted is the marker of earlier versions, which unpacked everything
+        if any((zips / m).exists() for m in (f"{name}.{scope}.extracted", f"{name}.all.extracted",
+                                            f"{name}.extracted")):
             continue
         print(f"downloading {name}")
         download_file(url, zips / name, size, md5)
         with zipfile.ZipFile(zips / name) as z:
-            z.extractall(raw)
-        done.touch()
+            members = [m for m in z.namelist() if not m.endswith("/")
+                       and (scope == "all" or is_wanted(PurePosixPath(m).parts, keys))]
+            z.extractall(raw, members)
+        print(f"  unpacked {len(members)} files")
+        (zips / f"{name}.{scope}.extracted").touch()
         if not args.keep_zips:
             (zips / name).unlink()
     print(f"videos are under {raw}; next: python -m signvaani.include_dataset convert --subset {args.subset}")
@@ -225,7 +244,7 @@ def convert_one(job, make_holistic=mediapipe_holistic):
         return dest, None, 0.0
     dest.parent.mkdir(parents=True, exist_ok=True)
     np.save(dest, seq)
-    return dest, len(seq), float(np.mean([any(hands_visible(f)) for f in seq]))
+    return dest, len(seq), hands_share(seq)
 
 
 def convert(args, make_holistic=mediapipe_holistic):
@@ -298,6 +317,7 @@ def main(argv=None):
     d.add_argument("--raw", default="data/raw_videos/include")
     d.add_argument("--record", default=ZENODO_RECORD)
     d.add_argument("--all", action="store_true", help="download every archive in the record")
+    d.add_argument("--all-videos", action="store_true", help="unpack every video, not only the subset's")
     d.add_argument("--keep-zips", action="store_true")
     d.add_argument("--dry-run", action="store_true", help="only list the archives and their size")
 
