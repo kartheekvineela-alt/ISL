@@ -48,6 +48,20 @@ class SignSpotter:
 
     def update(self, frame):
         """Feed one (N_POINTS, 3) frame. Returns (label, prob) when a sign is accepted."""
+        clip = self.segment(frame)
+        if clip is None:
+            return None
+        probs = self.classifier(preprocess(clip, self.classifier.seq_len))
+        self.last_probs = probs
+        best = int(np.argmax(probs))
+        label = self.classifier.labels[best]
+        if label == self.idle_label or probs[best] < self.confidence:
+            return None
+        self._cool = self.cooldown
+        return label, float(probs[best])
+
+    def segment(self, frame):
+        """Feed one frame. Returns the raw window (T, N_POINTS, 3) when a sign window closes, else None."""
         m = self._motion(frame)
         self.energy = self.smoothing * self.energy + (1 - self.smoothing) * m
         if self._cool > 0:
@@ -67,13 +81,22 @@ class SignSpotter:
         self.active = False
         clip = np.stack(self.buffer[:len(self.buffer) - self._quiet // 2])
         self.buffer, self.history = [], deque(maxlen=self.history.maxlen)
-        if len(clip) < self.min_frames:
-            return None
-        probs = self.classifier(preprocess(clip, self.classifier.seq_len))
-        self.last_probs = probs
-        best = int(np.argmax(probs))
-        label = self.classifier.labels[best]
-        if label == self.idle_label or probs[best] < self.confidence:
-            return None
-        self._cool = self.cooldown
-        return label, float(probs[best])
+        return clip if len(clip) >= self.min_frames else None
+
+
+def sign_windows(seq, **params):
+    """The raw windows the live spotter cuts from a recorded clip, plus one still open when the clip ends."""
+    spotter = SignSpotter(None, **params)
+    windows = [w for w in (spotter.segment(f) for f in seq) if w is not None]
+    if spotter.active and len(spotter.buffer) >= spotter.min_frames:
+        windows.append(np.stack(spotter.buffer))
+    return windows
+
+
+def trim_to_sign(seq, **params):
+    """The part of a recorded clip that the live app would classify: the spotter's longest window, or the
+    whole clip when the spotter finds none (e.g. an IDLE take with the hands at rest). Training on this
+    instead of the whole take keeps training clips like the live ones, which start just before the hands
+    move and end soon after they stop."""
+    windows = sign_windows(seq, **params)
+    return max(windows, key=len) if windows else np.asarray(seq)

@@ -13,6 +13,7 @@ from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from .data import index_clips
 from .landmarks import preprocess
 from .models import build_model
+from .spotter import trim_to_sign
 
 
 def main():
@@ -31,7 +32,8 @@ def main():
 
     clips = [c for c in index_clips(args.data) if not args.signers or c.signer in args.signers]
     clips = [c for c in clips if c.sign in labels]
-    x = torch.from_numpy(np.stack([preprocess(np.load(c.path), ck["seq_len"]) for c in clips]))
+    cut = trim_to_sign if ck.get("trim") else (lambda raw: raw)  # evaluate clips the way the model was trained
+    x = torch.from_numpy(np.stack([preprocess(cut(np.load(c.path)), ck["seq_len"]) for c in clips]))
     y = np.array([labels.index(c.sign) for c in clips])
     with torch.no_grad():
         probs = torch.softmax(model(x), 1).numpy()

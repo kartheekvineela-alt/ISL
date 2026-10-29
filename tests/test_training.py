@@ -13,6 +13,11 @@ def test_train_export_on_synthetic_data(tmp_path):
     out = run("signvaani.train", "--data", str(data), "--test-signers", "s02", "--epochs", "3",
               "--batch-size", "8", "--out", str(ckpt), "--runs", str(tmp_path / "runs")).stdout
     assert "TEST accuracy" in out and ckpt.exists()
+    assert "class weights: SIGN0 1.00, SIGN1 1.00, SIGN2 1.00" in out  # equal classes: equal weights
+    assert torch.load(ckpt, map_location="cpu")["trim"] is True
+    out = run("signvaani.evaluate", "--ckpt", str(ckpt), "--data", str(data), "--signers", "s02",
+              "--out", str(tmp_path / "eval")).stdout
+    assert "clips 12 | top-1" in out
 
     import json
     record, = (tmp_path / "runs").glob("signer_gru_*.json")
@@ -45,3 +50,23 @@ def test_loso_refuses_include_split_folders(tmp_path):
     res = subprocess.run([sys.executable, "-m", "signvaani.train", "--data", str(tmp_path), "--loso"],
                          capture_output=True, text=True)
     assert res.returncode == 2 and "--test-signers test --val-signers val" in res.stderr
+
+
+def test_class_weights_favour_small_classes():
+    from pathlib import Path
+    from signvaani.data import Clip
+    from signvaani.train import class_weights
+    clips = [Clip(Path(f"a{i}.npy"), "LOUD", "train") for i in range(15)]
+    clips += [Clip(Path(f"b{i}.npy"), "SAD", "train") for i in range(5)]
+    w = class_weights(clips, ["LOUD", "SAD", "UGLY"]).tolist()
+    assert abs(w[1] / w[0] - 3) < 1e-6 and w[2] == 0  # 5 clips weigh 3x as much as 15; no clips, no weight
+    assert class_weights(clips[:5] + clips[15:], ["LOUD", "SAD"]).tolist() == [1.0, 1.0]
+
+
+def test_balance_and_trim_can_be_switched_off(tmp_path):
+    data, ckpt = tmp_path / "syn", tmp_path / "m.pt"
+    run = lambda *a: subprocess.run([sys.executable, "-m", *a], check=True, capture_output=True, text=True)
+    run("signvaani.make_synthetic", "--out", str(data), "--signs", "2", "--signers", "2", "--takes", "3")
+    out = run("signvaani.train", "--data", str(data), "--test-signers", "s01", "--epochs", "1", "--batch-size", "4",
+              "--no-balance", "--no-trim", "--out", str(ckpt), "--runs", str(tmp_path / "runs")).stdout
+    assert "class weights" not in out and torch.load(ckpt, map_location="cpu")["trim"] is False

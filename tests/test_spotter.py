@@ -1,7 +1,7 @@
 import numpy as np
 
 from signvaani.landmarks import L_SHOULDER, L_WRIST, LEFT_HAND, N_POINTS, R_SHOULDER, RIGHT_HAND
-from signvaani.spotter import SignSpotter
+from signvaani.spotter import SignSpotter, trim_to_sign
 
 
 class FakeClassifier:
@@ -49,3 +49,20 @@ def test_no_motion_no_classification():
     for _ in range(100):
         assert sp.update(frame(0.5)) is None
     assert clf.calls == 0
+
+
+def test_trim_to_sign_keeps_the_window_the_live_spotter_classifies():
+    xs = [0.5] * 15 + list(0.5 + 0.1 * np.sin(np.linspace(0, 4 * np.pi, 25))) + [0.5] * 30
+    take = np.stack([frame(x) for x in xs])
+    cut = trim_to_sign(take)
+    moving = lambda clip: int(np.sum(clip[:, L_WRIST, 0] != 0.5))
+    first, last = np.flatnonzero(take[:, L_WRIST, 0] != 0.5)[[0, -1]]
+    assert moving(cut) == moving(take)  # the whole movement is kept
+    assert len(cut) <= (last - first + 1) + 5 + 10  # plus the pre-roll and a short quiet tail
+    assert len(cut) < len(take) - 20  # most of the rest before and after is gone
+
+    still = np.stack([frame(0.5)] * 40)
+    assert np.array_equal(trim_to_sign(still), still, equal_nan=True)  # nothing detected: whole take kept
+
+    unfinished = np.stack([frame(x) for x in [0.5] * 10 + list(0.5 + 0.1 * np.sin(np.linspace(0, 6 * np.pi, 30)))])
+    assert moving(trim_to_sign(unfinished)) == moving(unfinished)  # still moving at the end of the take
