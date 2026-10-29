@@ -84,6 +84,9 @@ python -m signvaani.app --model models/sign_model.onnx --lang en
 Live app keys: `SPACE` speak, `c` clear, `u` undo, `l` switch English/Hindi, `s` skeleton on/off, `f` full
 screen on/off, `q` quit. The window can also be resized or maximised (`--fullscreen` starts in full screen).
 
+Training gives signs with fewer clips a larger loss weight, and cuts every clip to the window the live
+spotter would classify, so training clips look like live ones (`--no-balance`, `--no-trim` switch these off).
+
 Spotter tuning (Day 3): `--on`, `--off` and `--quiet-frames` set the motion thresholds shown at the top of
 the window.
 

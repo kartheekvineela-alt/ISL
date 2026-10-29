@@ -14,6 +14,7 @@ import numpy as np
 
 from .augment import augment
 from .landmarks import preprocess
+from .spotter import trim_to_sign
 
 VOCAB = Path(__file__).resolve().parents[1] / "configs" / "vocabulary.json"
 # Signers are anonymous IDs (s01, s02, ...), never names.
@@ -85,19 +86,27 @@ try:
     from torch.utils.data import Dataset
 
     class SignDataset(Dataset):
-        def __init__(self, clips, labels, seq_len=32, train=False, seed=0):
+        def __init__(self, clips, labels, seq_len=32, train=False, seed=0, trim=False):
+            """trim: use only the part of each clip the live spotter would cut out (spotter.trim_to_sign)."""
             self.clips = clips
             self.label_to_id = {l: i for i, l in enumerate(labels)}
             self.seq_len = seq_len
             self.train = train
+            self.trim = trim
             self.rng = np.random.default_rng(seed)
+            self._trimmed = {}  # the cut is the same every epoch, so it is done once per clip
 
         def __len__(self):
             return len(self.clips)
 
         def __getitem__(self, i):
             clip = self.clips[i]
-            raw = np.load(clip.path)
+            if not self.trim:
+                raw = np.load(clip.path)
+            elif i in self._trimmed:
+                raw = self._trimmed[i]
+            else:
+                raw = self._trimmed[i] = trim_to_sign(np.load(clip.path))
             if self.train:
                 raw = augment(raw, self.rng)
             x = preprocess(raw, self.seq_len)

@@ -13,6 +13,12 @@ Examples:
     # INCLUDE-50, official split (real public ISL data; the split name stands in for the signer)
     python -m signvaani.train --data data/include_keypoints/include50 --test-signers test --val-signers val
 
+Two defaults make the model behave better live (switch off with --no-balance / --no-trim):
+  - signs with fewer training clips get a larger weight in the loss, so a sign with 6 clips counts as
+    much as one with 15 and the model does not fall back to the biggest classes;
+  - every clip is cut to the window the live spotter would classify (from just before the hands move to
+    soon after they stop), so training clips look like the ones the app sees.
+
 Every run writes runs/<mode>_<model>_<time>.json: top-1 and macro-F1 per fold and the prediction for
 every test clip. `python -m signvaani.confusion <run.json>` turns it into confusion matrices and the
 most confused sign pairs (Day 3).
@@ -53,21 +59,33 @@ def run_epoch(model, loader, device, criterion, optimizer=None):
     return loss_sum / max(total, 1), correct / max(total, 1)
 
 
+def class_weights(clips, labels):
+    """Loss weight per label, inversely proportional to its number of clips (1 when all are equal)."""
+    counts = np.array([sum(c.sign == label for c in clips) for label in labels], np.float64)
+    weights = np.where(counts > 0, counts.sum() / (len(labels) * np.maximum(counts, 1)), 0.0)
+    return torch.tensor(weights, dtype=torch.float32)
+
+
 def train_one(train, val, test, labels, args, out_path=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(args.seed)
-    mk = lambda clips, tr: DataLoader(SignDataset(clips, labels, args.seq_len, train=tr, seed=args.seed),
+    mk = lambda clips, tr: DataLoader(SignDataset(clips, labels, args.seq_len, train=tr, seed=args.seed,
+                                                  trim=args.trim),
                                       batch_size=args.batch_size, shuffle=tr, num_workers=args.workers)
     train_dl, val_dl = mk(train, True), mk(val, False)
     model = build_model(args.model, FEATURE_DIM, len(labels)).to(device)
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    weights = class_weights(train, labels) if args.balance else None
+    if weights is not None:
+        print("class weights: " + ", ".join(f"{l} {w:.2f}" for l, w in zip(labels, weights.tolist())))
+    criterion = nn.CrossEntropyLoss(weight=None if weights is None else weights.to(device), label_smoothing=0.1)
+    eval_criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
 
     best_acc, best_state, stale = -1.0, None, 0
     for epoch in range(1, args.epochs + 1):
         tl, ta = run_epoch(model, train_dl, device, criterion, opt)
-        vl, va = run_epoch(model, val_dl, device, criterion)
+        vl, va = run_epoch(model, val_dl, device, eval_criterion)
         sched.step()
         print(f"epoch {epoch:3d}  train loss {tl:.3f} acc {ta:.3f}  |  val loss {vl:.3f} acc {va:.3f}")
         if va > best_acc:
@@ -87,7 +105,7 @@ def train_one(train, val, test, labels, args, out_path=None):
     if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model": args.model, "state_dict": best_state, "labels": labels,
-                    "seq_len": args.seq_len, "feature_dim": FEATURE_DIM}, out_path)
+                    "seq_len": args.seq_len, "feature_dim": FEATURE_DIM, "trim": args.trim}, out_path)
         print(f"saved {out_path}")
     return best_acc, result
 
@@ -141,6 +159,10 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="models/best.pt")
     p.add_argument("--runs", default="runs", help="folder for the run record (.json)")
+    p.add_argument("--no-balance", dest="balance", action="store_false",
+                   help="do not weight the loss by class size")
+    p.add_argument("--no-trim", dest="trim", action="store_false",
+                   help="train on whole clips instead of the window the live spotter cuts out")
     args = p.parse_args(argv)
 
     clips = index_clips(args.data)
