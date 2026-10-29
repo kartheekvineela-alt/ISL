@@ -7,6 +7,9 @@
 Keys: SPACE = speak sentence, c = clear, u = undo last sign, l = toggle language,
       s = toggle skeleton, f = full screen on/off, q = quit.
 The window can also be resized or maximised; only the display grows, the camera stays at 640x480.
+Top left: the model's top-3 guesses for the last movement, then whether that sign was added to the
+sentence or not (and why: below --confidence, or IDLE). The signs line and the sentence at the bottom
+keep the newest words on screen; c clears them, SPACE speaks and clears.
 A sentence is also spoken automatically after --pause seconds without signing
 when --auto-speak is on.
 
@@ -36,6 +39,20 @@ from .speech import speak
 def put(img, text, org, scale=0.7, color=(255, 255, 255)):
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 4, cv2.LINE_AA)
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2, cv2.LINE_AA)
+
+
+def text_width(text, scale):
+    return cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 2)[0][0]
+
+
+def fit(text, width, scale):
+    """The end of `text` that fits in `width` pixels, with '...' in place of the words dropped from the front,
+    so the newest signs and words stay on screen."""
+    words, dropped = text.split(" "), 0
+    shown = lambda: " ".join(["..."] * bool(dropped) + words[dropped:])
+    while len(words) - dropped > 1 and text_width(shown(), scale) > width:
+        dropped += 1
+    return shown()
 
 
 class MotionOnly:
@@ -77,6 +94,7 @@ def main(argv=None):
     cap = cv2.VideoCapture(args.camera)
     fps_t, fps = time.time(), 0.0
     window, full = "SignVaani", args.fullscreen
+    shown_probs, verdict = None, None  # the last classified window, and whether its sign was added
     cv2.namedWindow(window, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # resizable, keeps 4:3
     if full:
         cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -95,9 +113,17 @@ def main(argv=None):
                 glosses.append(hit[0])
                 last_sign_t = time.time()
                 print(f"sign: {hit[0]} ({hit[1]:.2f})")
+            if spotter.last_probs is not shown_probs:  # a window was just classified: say what happened to it
+                shown_probs = spotter.last_probs
+                if hit:
+                    verdict = (f"added: {hit[0]}", (0, 255, 0))
+                elif clf.labels[int(np.argmax(shown_probs))] == spotter.idle_label:
+                    verdict = ("not added: IDLE (no sign)", (0, 165, 255))
+                else:
+                    verdict = (f"not added: below {args.confidence:.0%}", (0, 165, 255))
 
             if args.preview:
-                sentence = f"{len(glosses)} signs detected (preview: no model, nothing is recognised)"
+                sentence = f"{len(glosses)} signs detected (preview, no model)"
             else:
                 sentence, _ = builder.build(glosses, "en")
             if (args.auto_speak and not args.preview and glosses and not spotter.active
@@ -124,8 +150,10 @@ def main(argv=None):
                 top = np.argsort(-spotter.last_probs)[:3]
                 for i, k in enumerate(top):
                     put(frame, f"{clf.labels[k]:<14} {spotter.last_probs[k]:.0%}", (15, 60 + 25 * i), 0.55)
-            put(frame, "Signs: " + " ".join(glosses), (15, h - 50), 0.6, (0, 255, 255))
-            put(frame, sentence, (15, h - 18), 0.8)
+                put(frame, verdict[0], (15, 60 + 25 * len(top)), 0.55, verdict[1])
+            put(frame, "Signs: " + fit(" ".join(glosses), w - 30 - text_width("Signs: ", 0.6), 0.6),
+                (15, h - 50), 0.6, (0, 255, 255))
+            put(frame, fit(sentence, w - 30, 0.8), (15, h - 18), 0.8)
             cv2.imshow(window, frame)
 
             key = cv2.waitKey(1) & 0xFF
