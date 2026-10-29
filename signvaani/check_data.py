@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 from .data import CLIP_NAME, VOCAB, vocabulary
-from .landmarks import L_WRIST, LEFT_HAND, N_FACE, N_POINTS, N_POSE, R_WRIST, RIGHT_HAND, hands_visible
+from .landmarks import L_WRIST, LEFT_HAND, N_FACE, N_POINTS, N_POSE, R_WRIST, RIGHT_HAND, hands_share
 
 PARTS = {"pose": slice(0, N_POSE), "face": slice(N_POSE, N_POSE + N_FACE),
          "left hand": LEFT_HAND, "right hand": RIGHT_HAND}
@@ -80,7 +80,7 @@ def check(root, vocab, signers=(), takes=10, min_hands=0.9, signs=None):
             st = stats[sign_dir.name]
             st["clips"][match.group(1)] += 1
             st["frames"].append(len(clip))
-            st["hands"].append(np.mean([any(hands_visible(frame)) for frame in clip]))
+            st["hands"].append(hands_share(clip))
 
     people = sorted(set(signers) | {s for st in stats.values() for s in st["clips"]})
     if not people:

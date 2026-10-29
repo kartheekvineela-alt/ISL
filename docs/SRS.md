@@ -106,6 +106,19 @@ speakers. Internet is needed only for Hindi speech, unless that audio was cached
 - MediaPipe Holistic 0.10.14 supplies the landmarks. gTTS (Hindi speech) needs internet.
 - A native speaker checks every Hindi sentence.
 
+### 2.7 Use cases and the main sequence
+
+![SignVaani use-case diagram](diagrams/usecase.svg)
+
+*Figure 3: Use-case diagram. The deaf user and the hearing person share the live app; the developer
+records, checks, trains and evaluates. Editable source: `diagrams/usecase.drawio`.*
+
+![SignVaani sequence diagram](diagrams/sequence.svg)
+
+*Figure 4: Sequence of one sign, then speak (blueprint Figure 5). Every frame goes through MediaPipe and
+the spotter; the classifier runs once per closed window, and the sentence and speech once per SPACE
+press. Editable source: `diagrams/sequence.drawio`.*
+
 ## 3. Specific requirements
 
 ### 3.1 Functional requirements

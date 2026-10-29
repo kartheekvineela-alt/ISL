@@ -7,6 +7,11 @@ Keys: SPACE = speak sentence, c = clear, u = undo last sign, l = toggle language
       s = toggle skeleton, q = quit.
 A sentence is also spoken automatically after --pause seconds without signing
 when --auto-speak is on.
+
+Tuning the sign spotter (Day 3): watch the motion value at the top. It should stay below --off at
+rest and rise above --on during every sign. Signs missed: lower --on. False signs at rest: raise
+--on (F4). Two signs merged: lower --quiet-frames or pause longer between signs (F6).
+    python -m signvaani.app --model models/best.pt --on 0.03 --off 0.012 --quiet-frames 6
 """
 import argparse
 import time
@@ -33,13 +38,17 @@ def main():
     p.add_argument("--model", default="models/sign_model.onnx")
     p.add_argument("--lang", default="en", choices=["en", "hi"])
     p.add_argument("--confidence", type=float, default=0.8)
+    p.add_argument("--on", type=float, default=0.02, help="motion that opens a sign window")
+    p.add_argument("--off", type=float, default=0.01, help="motion below which frames count as quiet")
+    p.add_argument("--quiet-frames", type=int, default=8, help="quiet frames that close the window")
     p.add_argument("--auto-speak", action="store_true")
     p.add_argument("--pause", type=float, default=2.5)
     p.add_argument("--camera", type=int, default=0)
     args = p.parse_args()
 
     clf = SignClassifier(args.model)
-    spotter = SignSpotter(clf, confidence=args.confidence)
+    spotter = SignSpotter(clf, on_threshold=args.on, off_threshold=args.off, quiet_frames=args.quiet_frames,
+                          confidence=args.confidence)
     builder = SentenceBuilder()
     glosses, last_sign_t, lang, show_skel = [], time.time(), args.lang, True
     holistic_mod, draw = mp.solutions.holistic, mp.solutions.drawing_utils
@@ -78,7 +87,8 @@ def main():
             fps_t = now
             h, w = frame.shape[:2]
             status = ("SIGNING", (0, 0, 255)) if spotter.active else ("ready", (0, 255, 0))
-            put(frame, f"{status[0]}   motion {spotter.energy:.3f}   {fps:.0f} FPS   lang {lang}", (15, 30), 0.6, status[1])
+            put(frame, f"{status[0]}   motion {spotter.energy:.3f} (on {args.on}, off {args.off})   "
+                       f"{fps:.0f} FPS   lang {lang}", (15, 30), 0.6, status[1])
             if spotter.last_probs is not None:
                 top = np.argsort(-spotter.last_probs)[:3]
                 for i, k in enumerate(top):

@@ -11,8 +11,18 @@ def test_train_export_on_synthetic_data(tmp_path):
     run = lambda *a: subprocess.run([sys.executable, "-m", *a], check=True, capture_output=True, text=True)
     run("signvaani.make_synthetic", "--out", str(data), "--signs", "3", "--signers", "3", "--takes", "4")
     out = run("signvaani.train", "--data", str(data), "--test-signers", "s02", "--epochs", "3",
-              "--batch-size", "8", "--out", str(ckpt)).stdout
+              "--batch-size", "8", "--out", str(ckpt), "--runs", str(tmp_path / "runs")).stdout
     assert "TEST accuracy" in out and ckpt.exists()
+
+    import json
+    record, = (tmp_path / "runs").glob("signer_gru_*.json")
+    run_ = json.loads(record.read_text())
+    fold, = run_["folds"]
+    assert run_["mode"] == "signer" and fold["name"] == "s02" and fold["n"] == 3 * 4
+    assert {p["signer"] for p in fold["predictions"]} == {"s02"} and run_["parameters"] > 0
+    assert fold["top1"] == sum(p["true"] == p["pred"] for p in fold["predictions"]) / fold["n"]
+    run("signvaani.confusion", str(record), "--out", str(tmp_path / "confusion"))
+    assert "## Table R6" in (tmp_path / "confusion" / "report.md").read_text(encoding="utf-8")
 
     from signvaani.inference import SignClassifier
     import numpy as np
@@ -25,3 +35,13 @@ def test_train_export_on_synthetic_data(tmp_path):
     run("signvaani.export_onnx", "--ckpt", str(ckpt), "--out", str(onnx_path))
     onnx_probs = SignClassifier(onnx_path)(np.zeros((clf.seq_len, 378), np.float32))
     np.testing.assert_allclose(probs, onnx_probs, atol=1e-4)
+
+
+def test_loso_refuses_include_split_folders(tmp_path):
+    import numpy as np
+    for split in ("train", "val", "test"):
+        (tmp_path / "HELLO").mkdir(exist_ok=True)
+        np.save(tmp_path / "HELLO" / f"{split}_MVI_0001.npy", np.zeros((10, 63, 3), np.float32))
+    res = subprocess.run([sys.executable, "-m", "signvaani.train", "--data", str(tmp_path), "--loso"],
+                         capture_output=True, text=True)
+    assert res.returncode == 2 and "--test-signers test --val-signers val" in res.stderr

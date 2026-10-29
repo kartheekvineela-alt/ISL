@@ -46,6 +46,11 @@ def hands_visible(frame):
     return (not np.isnan(frame[LEFT_HAND]).any(), not np.isnan(frame[RIGHT_HAND]).any())
 
 
+def hands_share(seq):
+    """Share of the frames of a raw clip in which at least one hand was detected."""
+    return float(np.mean([any(hands_visible(f)) for f in seq])) if len(seq) else 0.0
+
+
 def interpolate_missing(seq, max_gap=6):
     """Linearly fill short detection gaps; longer gaps become 0 (treated as 'absent')."""
     seq = np.array(seq, np.float32, copy=True)

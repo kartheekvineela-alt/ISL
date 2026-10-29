@@ -13,3 +13,6 @@ data/include_keypoints/
 # Training outputs
 runs/
 models/*.pt
+
+# Clips moved out by signvaani.qc
+data/rejected/

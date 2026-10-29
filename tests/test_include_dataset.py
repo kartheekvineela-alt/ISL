@@ -82,12 +82,15 @@ def test_convert_writes_signvaani_layout(tmp_path):
     assert "weak hand tracking, check by eye (3)" in (out / "conversion_log.txt").read_text()
 
 
-def test_download_picks_archives_checks_md5_and_unzips(tmp_path):
+def test_download_picks_archives_checks_md5_and_unzips_only_the_subset(tmp_path):
     srv, raw = tmp_path / "srv", tmp_path / "raw"
     srv.mkdir()
+    wanted = {"Jobs": "Jobs/87. Doctor/MVI_4471.MOV", "Pronouns": "Pronouns_1of1/Pronouns/40. I/MVI_9920.MOV"}
     for category in ["Jobs", "Pronouns", "Society", "People", "Animals"]:
         with zipfile.ZipFile(srv / f"{category}_1of1.zip", "w") as z:
-            z.writestr(f"{category}/1. Sign/MVI_0001.MOV", category.encode())
+            z.writestr(f"{category}/1. Sign/MVI_0001.MOV", category.encode())  # not a hospital sign
+            if category in wanted:
+                z.writestr(wanted[category], category.encode())
     server = http.server.ThreadingHTTPServer(
         ("127.0.0.1", 0), functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(srv)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -95,10 +98,20 @@ def test_download_picks_archives_checks_md5_and_unzips(tmp_path):
     (srv / "record.json").write_text(json.dumps({"files": [
         {"key": z.name, "size": z.stat().st_size, "checksum": "md5:" + hashlib.md5(z.read_bytes()).hexdigest(),
          "links": {"self": f"{base}/{z.name}"}} for z in srv.glob("*.zip")]}))
+    get = lambda *extra: main(["download", "--subset", "hospital", "--record", f"{base}/record.json",
+                               "--raw", str(raw), *extra])
     try:
-        main(["download", "--subset", "hospital", "--record", f"{base}/record.json", "--raw", str(raw)])
+        get()
+        assert (raw / wanted["Jobs"]).read_bytes() == b"Jobs"
+        assert (raw / wanted["Pronouns"]).read_bytes() == b"Pronouns"
+        assert not (raw / "Jobs" / "1. Sign").exists() and not (raw / "Society").exists()  # skipped videos
+        assert not (raw / "People").exists() and not (raw / "Animals").exists()  # no hospital sign there
+        assert not list((raw / "zips").glob("*.zip"))  # archives removed after unpacking
+        (srv / "Jobs_1of1.zip").rename(srv / "offline")
+        get()  # already unpacked for this subset: nothing is downloaded again
+        (srv / "offline").rename(srv / "Jobs_1of1.zip")
+        get("--all-videos", "--keep-zips")  # a wider scope downloads again
     finally:
         server.shutdown()
-    assert (raw / "Jobs" / "1. Sign" / "MVI_0001.MOV").read_bytes() == b"Jobs"
-    assert not (raw / "People").exists() and not (raw / "Animals").exists()  # no hospital sign there
-    assert not list((raw / "zips").glob("*.zip"))  # archives removed after unpacking
+    assert (raw / "Society" / "1. Sign" / "MVI_0001.MOV").read_bytes() == b"Society"
+    assert len(list((raw / "zips").glob("*.zip"))) == 3
