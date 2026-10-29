@@ -81,7 +81,8 @@ python -m signvaani.export_onnx --ckpt models/best.pt
 python -m signvaani.app --model models/sign_model.onnx --lang en
 ```
 
-Live app keys: `SPACE` speak, `c` clear, `u` undo, `l` switch English/Hindi, `s` skeleton on/off, `q` quit.
+Live app keys: `SPACE` speak, `c` clear, `u` undo, `l` switch English/Hindi, `s` skeleton on/off, `f` full
+screen on/off, `q` quit. The window can also be resized or maximised (`--fullscreen` starts in full screen).
 
 Spotter tuning (Day 3): `--on`, `--off` and `--quiet-frames` set the motion thresholds shown at the top of
 the window.

@@ -166,7 +166,7 @@ press. Editable source: `diagrams/sequence.drawio`.*
 
 - **User interface:** an OpenCV window showing the skeleton, the status (ready / SIGNING), motion value,
   FPS, language, top-3 predictions with confidence, the recognised signs and the sentence. Keys: SPACE
-  speak, `c` clear, `u` undo, `l` switch English/Hindi, `s` skeleton on/off, `q` quit.
+  speak, `c` clear, `u` undo, `l` switch English/Hindi, `s` skeleton on/off, `f` full screen, `q` quit.
 - **Hardware:** a webcam (OpenCV camera index) and speakers.
 - **Software:** MediaPipe Holistic 0.10.14 (landmarks), ONNX Runtime (CPU inference), PyTorch
   (training), pyttsx3 (offline English speech), gTTS and pygame (Hindi speech and playback).

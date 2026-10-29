@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 Point = types.SimpleNamespace
+NORMAL, KEEPRATIO, FULLSCREEN = 0, 0, 1  # the real cv2 values (WINDOW_AUTOSIZE, the old default, is 1)
 
 
 def landmarks(points):
@@ -41,6 +42,13 @@ class Screen:
 
     def __init__(self, frames, keys=()):
         self.frames, self.keys, self.text, self.shown, self.n = frames, dict(keys), "", [], 0
+        self.windows, self.fullscreen = {}, []
+
+    def namedWindow(self, name, flags):
+        self.windows[name] = flags
+
+    def setWindowProperty(self, name, prop, value):
+        self.fullscreen.append(value == FULLSCREEN)
 
     def putText(self, img, text, *args):
         self.text += text + "|"
@@ -60,7 +68,10 @@ def app(monkeypatch):
         camera = Point(read=lambda: (True, np.zeros((48, 64, 3), np.uint8)), release=lambda: None)
         cv2 = Point(FONT_HERSHEY_SIMPLEX=0, LINE_AA=0, COLOR_BGR2RGB=0, VideoCapture=lambda index: camera,
                     flip=lambda frame, code: frame, cvtColor=lambda frame, code: frame, putText=screen.putText,
-                    imshow=screen.imshow, waitKey=screen.waitKey, destroyAllWindows=lambda: None)
+                    imshow=screen.imshow, waitKey=screen.waitKey, destroyAllWindows=lambda: None,
+                    namedWindow=screen.namedWindow, setWindowProperty=screen.setWindowProperty,
+                    WINDOW_NORMAL=NORMAL, WINDOW_KEEPRATIO=KEEPRATIO, WND_PROP_FULLSCREEN=0,
+                    WINDOW_FULLSCREEN=FULLSCREEN)
         holistic = Point(Holistic=MovingBody(xs), POSE_CONNECTIONS=None, HAND_CONNECTIONS=None)
         mp = Point(solutions=Point(holistic=holistic, drawing_utils=Point(draw_landmarks=lambda *a: None)))
         monkeypatch.setitem(sys.modules, "cv2", cv2)
@@ -99,3 +110,10 @@ def test_missing_model_points_to_preview(app, capsys):
     with pytest.raises(SystemExit):
         app(["--model", "missing.onnx"])
     assert "python -m signvaani.app --preview" in capsys.readouterr().err
+
+
+def test_window_is_resizable_and_f_toggles_full_screen(app):
+    screen, _ = app(["--preview"], frames=10, keys={3: "f", 6: "f"})
+    assert screen.windows == {"SignVaani": NORMAL | KEEPRATIO} and screen.fullscreen == [True, False]
+    screen, _ = app(["--preview", "--fullscreen"], frames=5, keys={2: "f"})
+    assert screen.fullscreen == [True, False]
