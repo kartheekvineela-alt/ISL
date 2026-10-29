@@ -86,6 +86,10 @@ Live app keys: `SPACE` speak, `c` clear, `u` undo, `l` switch English/Hindi, `s`
 Spotter tuning (Day 3): `--on`, `--off` and `--quiet-frames` set the motion thresholds shown at the top of
 the window.
 
+Before any model is trained, `python -m signvaani.app --preview` opens the camera with the skeleton, the
+motion value and a count of detected signs. It checks the camera, MediaPipe and the spotter; it does not
+recognise which sign was made and does not speak.
+
 To check the pipeline before your own recordings are complete, train on the real INCLUDE-50 clips (see
 Dataset). `signvaani.make_synthetic` only feeds the automated tests; never train or report on it.
 

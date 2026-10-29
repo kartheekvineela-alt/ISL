@@ -2,6 +2,7 @@
 
     python -m signvaani.app --model models/sign_model.onnx --lang en
     python -m signvaani.app --model models/best.pt --lang hi --auto-speak
+    python -m signvaani.app --preview          # no model yet: camera, skeleton and sign detection only
 
 Keys: SPACE = speak sentence, c = clear, u = undo last sign, l = toggle language,
       s = toggle skeleton, q = quit.
@@ -12,9 +13,14 @@ Tuning the sign spotter (Day 3): watch the motion value at the top. It should st
 rest and rise above --on during every sign. Signs missed: lower --on. False signs at rest: raise
 --on (F4). Two signs merged: lower --quiet-frames or pause longer between signs (F6).
     python -m signvaani.app --model models/best.pt --on 0.03 --off 0.012 --quiet-frames 6
+
+--preview needs no trained model. It shows the skeleton, the motion value and every sign the spotter
+detects (as SIGN, with a count), so the camera, MediaPipe and the spotter thresholds can be checked
+before Day 3. It does not recognise which sign it is and does not speak.
 """
 import argparse
 import time
+from pathlib import Path
 
 import cv2
 import mediapipe as mp
@@ -31,7 +37,16 @@ def put(img, text, org, scale=0.7, color=(255, 255, 255)):
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2, cv2.LINE_AA)
 
 
-def main():
+class MotionOnly:
+    """Stand-in classifier for --preview: every window the spotter closes counts as one SIGN."""
+    labels = ["SIGN"]
+    seq_len = 32
+
+    def __call__(self, features):
+        return np.ones(1, np.float32)
+
+
+def main(argv=None):
     from .spotter import SignSpotter
 
     p = argparse.ArgumentParser()
@@ -44,9 +59,14 @@ def main():
     p.add_argument("--auto-speak", action="store_true")
     p.add_argument("--pause", type=float, default=2.5)
     p.add_argument("--camera", type=int, default=0)
-    args = p.parse_args()
+    p.add_argument("--preview", action="store_true",
+                   help="no model needed: camera, skeleton and sign detection only, nothing is recognised")
+    args = p.parse_args(argv)
+    if not args.preview and not Path(args.model).is_file():
+        p.error(f"no model at {args.model}: train one first (docs/day3.md), or check the camera, skeleton and "
+                "sign detection without a model: python -m signvaani.app --preview")
 
-    clf = SignClassifier(args.model)
+    clf = MotionOnly() if args.preview else SignClassifier(args.model)
     spotter = SignSpotter(clf, on_threshold=args.on, off_threshold=args.off, quiet_frames=args.quiet_frames,
                           confidence=args.confidence)
     builder = SentenceBuilder()
@@ -70,8 +90,12 @@ def main():
                 last_sign_t = time.time()
                 print(f"sign: {hit[0]} ({hit[1]:.2f})")
 
-            sentence, _ = builder.build(glosses, "en")
-            if args.auto_speak and glosses and not spotter.active and time.time() - last_sign_t > args.pause:
+            if args.preview:
+                sentence = f"{len(glosses)} signs detected (preview: no model, nothing is recognised)"
+            else:
+                sentence, _ = builder.build(glosses, "en")
+            if (args.auto_speak and not args.preview and glosses and not spotter.active
+                    and time.time() - last_sign_t > args.pause):
                 speak(builder.build(glosses, lang)[0], lang)
                 glosses = []
 
@@ -87,9 +111,10 @@ def main():
             fps_t = now
             h, w = frame.shape[:2]
             status = ("SIGNING", (0, 0, 255)) if spotter.active else ("ready", (0, 255, 0))
+            mode = "PREVIEW" if args.preview else f"lang {lang}"
             put(frame, f"{status[0]}   motion {spotter.energy:.3f} (on {args.on}, off {args.off})   "
-                       f"{fps:.0f} FPS   lang {lang}", (15, 30), 0.6, status[1])
-            if spotter.last_probs is not None:
+                       f"{fps:.0f} FPS   {mode}", (15, 30), 0.6, status[1])
+            if spotter.last_probs is not None and not args.preview:
                 top = np.argsort(-spotter.last_probs)[:3]
                 for i, k in enumerate(top):
                     put(frame, f"{clf.labels[k]:<14} {spotter.last_probs[k]:.0%}", (15, 60 + 25 * i), 0.55)
@@ -101,7 +126,8 @@ def main():
             if key == ord("q"):
                 break
             if key == ord(" "):
-                speak(builder.build(glosses, lang)[0], lang)
+                if not args.preview:
+                    speak(builder.build(glosses, lang)[0], lang)
                 glosses = []
             elif key == ord("c"):
                 glosses = []
