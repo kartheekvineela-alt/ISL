@@ -8,6 +8,12 @@ import pytest
 
 Point = types.SimpleNamespace
 NORMAL, KEEPRATIO, FULLSCREEN = 0, 0, 1  # the real cv2 values (WINDOW_AUTOSIZE, the old default, is 1)
+CHAR = 16.8  # pixels per character at scale 1, about what cv2's FONT_HERSHEY_SIMPLEX measures
+W = 640  # the camera frame width
+
+
+def text_size(text, font, scale, thickness):
+    return (int(len(text) * CHAR * scale), int(22 * scale)), 5
 
 
 def landmarks(points):
@@ -63,15 +69,15 @@ class Screen:
 
 @pytest.fixture
 def app(monkeypatch):
-    def run(argv, xs=(), frames=80, keys=()):
+    def run(argv, xs=(), frames=80, keys=(), classifier=None):
         screen = Screen(frames, keys)
-        camera = Point(read=lambda: (True, np.zeros((48, 64, 3), np.uint8)), release=lambda: None)
+        camera = Point(read=lambda: (True, np.zeros((480, W, 3), np.uint8)), release=lambda: None)
         cv2 = Point(FONT_HERSHEY_SIMPLEX=0, LINE_AA=0, COLOR_BGR2RGB=0, VideoCapture=lambda index: camera,
                     flip=lambda frame, code: frame, cvtColor=lambda frame, code: frame, putText=screen.putText,
                     imshow=screen.imshow, waitKey=screen.waitKey, destroyAllWindows=lambda: None,
                     namedWindow=screen.namedWindow, setWindowProperty=screen.setWindowProperty,
                     WINDOW_NORMAL=NORMAL, WINDOW_KEEPRATIO=KEEPRATIO, WND_PROP_FULLSCREEN=0,
-                    WINDOW_FULLSCREEN=FULLSCREEN)
+                    WINDOW_FULLSCREEN=FULLSCREEN, getTextSize=text_size)
         holistic = Point(Holistic=MovingBody(xs), POSE_CONNECTIONS=None, HAND_CONNECTIONS=None)
         mp = Point(solutions=Point(holistic=holistic, drawing_utils=Point(draw_landmarks=lambda *a: None)))
         monkeypatch.setitem(sys.modules, "cv2", cv2)
@@ -80,6 +86,8 @@ def app(monkeypatch):
         module = importlib.import_module("signvaani.app")
         spoken = []
         monkeypatch.setattr(module, "speak", lambda text, lang: spoken.append(text))
+        if classifier:
+            monkeypatch.setattr(module, "SignClassifier", lambda path: classifier)
         module.main(argv)
         return screen, spoken
 
@@ -95,7 +103,7 @@ def one_sign():
 def test_preview_runs_without_a_model_and_counts_signs(app):
     screen, spoken = app(["--preview", "--model", "missing.onnx"], one_sign(), keys={70: " "})
     assert all("PREVIEW" in t for t in screen.shown)
-    seen = [t for t in screen.shown if "1 signs detected (preview: no model, nothing is recognised)" in t]
+    seen = [t for t in screen.shown if "1 signs detected (preview, no model)" in t]
     assert seen and "Signs: SIGN|" in seen[0]
     assert not any("2 signs detected" in t for t in screen.shown)
     assert "0 signs detected" in screen.shown[-1] and spoken == []  # SPACE clears, never speaks
@@ -117,3 +125,41 @@ def test_window_is_resizable_and_f_toggles_full_screen(app):
     assert screen.windows == {"SignVaani": NORMAL | KEEPRATIO} and screen.fullscreen == [True, False]
     screen, _ = app(["--preview", "--fullscreen"], frames=5, keys={2: "f"})
     assert screen.fullscreen == [True, False]
+
+
+class TakeTurns:
+    """Model stand-in: answers each window with the next probabilities in `answers`, round and round."""
+    labels, seq_len = ["IDLE", "HAPPY", "SAD"], 32
+
+    def __init__(self, answers):
+        self.answers, self.n = answers, 0
+
+    def __call__(self, features):
+        self.n += 1
+        return np.array(self.answers[(self.n - 1) % len(self.answers)])
+
+
+def test_newest_signs_stay_on_screen_and_rejected_signs_say_why(app, tmp_path):
+    model = tmp_path / "m.pt"
+    model.write_bytes(b"")
+    answers = [[0.05, 0.9, 0.05], [0.05, 0.05, 0.9], [0.3, 0.1, 0.6], [0.9, 0.05, 0.05]]  # HAPPY, SAD, weak, IDLE
+    clf = TakeTurns(answers)
+    screen, _ = app(["--model", str(model)], one_sign() * 30, frames=30 * 65, classifier=clf)
+    assert clf.n >= 24  # (nearly) every movement was classified
+
+    texts = [t.split("|")[:-1][::2] for t in screen.shown]  # put() draws each text twice: outline, then colour
+    verdicts = {line for lines in texts for line in lines if line.startswith(("added", "not added"))}
+    assert verdicts == {"added: HAPPY", "added: SAD", "not added: below 80%", "not added: IDLE (no sign)"}
+
+    *_, signs, sentence = texts[-1]
+    assert signs.startswith("Signs: ... ") and signs.endswith("SAD")  # older signs dropped, newest kept
+    assert len(signs) * CHAR * 0.6 <= W - 15 and len(sentence) * CHAR * 0.8 <= W - 15  # both fit the frame
+    assert sentence.startswith("... ") and sentence.endswith("sad.")
+
+
+def test_fit_keeps_the_end_of_the_text(app):
+    app(["--preview"], frames=1)
+    fit = sys.modules["signvaani.app"].fit
+    assert fit("HAPPY SAD", 1000, 0.6) == "HAPPY SAD"
+    assert fit("ONE TWO THREE FOUR FIVE", int(15 * CHAR * 0.6), 0.6) == "... FOUR FIVE"
+    assert fit("AVERYLONGSIGNNAME", 10, 0.6) == "AVERYLONGSIGNNAME"  # one word is never dropped
