@@ -67,7 +67,8 @@ def recorder(monkeypatch):
     camera = Point(read=lambda: (True, np.zeros((48, 64, 3), np.uint8)), release=lambda: None)
     cv2 = Point(FONT_HERSHEY_SIMPLEX=0, LINE_AA=0, COLOR_BGR2RGB=0, VideoCapture=lambda index: camera,
                 flip=lambda frame, code: frame, cvtColor=lambda frame, code: frame, putText=screen.putText,
-                imshow=screen.imshow, waitKey=screen.waitKey, destroyAllWindows=lambda: None)
+                imshow=screen.imshow, waitKey=screen.waitKey, destroyAllWindows=lambda: None,
+                namedWindow=lambda name, flags: None, WINDOW_NORMAL=0, WINDOW_KEEPRATIO=0)
     holistic = Point(Holistic=FakeHolistic, POSE_CONNECTIONS=None, HAND_CONNECTIONS=None)
     mp = Point(solutions=Point(holistic=holistic, drawing_utils=Point(draw_landmarks=lambda *a: None)))
     monkeypatch.setitem(sys.modules, "cv2", cv2)

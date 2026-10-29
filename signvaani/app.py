@@ -5,7 +5,8 @@
     python -m signvaani.app --preview          # no model yet: camera, skeleton and sign detection only
 
 Keys: SPACE = speak sentence, c = clear, u = undo last sign, l = toggle language,
-      s = toggle skeleton, q = quit.
+      s = toggle skeleton, f = full screen on/off, q = quit.
+The window can also be resized or maximised; only the display grows, the camera stays at 640x480.
 A sentence is also spoken automatically after --pause seconds without signing
 when --auto-speak is on.
 
@@ -59,6 +60,7 @@ def main(argv=None):
     p.add_argument("--auto-speak", action="store_true")
     p.add_argument("--pause", type=float, default=2.5)
     p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--fullscreen", action="store_true", help="start in full screen (f toggles it)")
     p.add_argument("--preview", action="store_true",
                    help="no model needed: camera, skeleton and sign detection only, nothing is recognised")
     args = p.parse_args(argv)
@@ -74,6 +76,10 @@ def main(argv=None):
     holistic_mod, draw = mp.solutions.holistic, mp.solutions.drawing_utils
     cap = cv2.VideoCapture(args.camera)
     fps_t, fps = time.time(), 0.0
+    window, full = "SignVaani", args.fullscreen
+    cv2.namedWindow(window, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # resizable, keeps 4:3
+    if full:
+        cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
     with holistic_mod.Holistic(model_complexity=1) as holistic:
         while True:
@@ -120,7 +126,7 @@ def main(argv=None):
                     put(frame, f"{clf.labels[k]:<14} {spotter.last_probs[k]:.0%}", (15, 60 + 25 * i), 0.55)
             put(frame, "Signs: " + " ".join(glosses), (15, h - 50), 0.6, (0, 255, 255))
             put(frame, sentence, (15, h - 18), 0.8)
-            cv2.imshow("SignVaani", frame)
+            cv2.imshow(window, frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
@@ -137,6 +143,10 @@ def main(argv=None):
                 lang = "hi" if lang == "en" else "en"
             elif key == ord("s"):
                 show_skel = not show_skel
+            elif key == ord("f"):
+                full = not full
+                cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN,
+                                      cv2.WINDOW_FULLSCREEN if full else cv2.WINDOW_NORMAL)
     cap.release()
     cv2.destroyAllWindows()
 

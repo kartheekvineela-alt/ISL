@@ -55,6 +55,7 @@ def main(argv=None):
 
     cap = cv2.VideoCapture(args.camera)
     draw, holistic_mod = mp.solutions.drawing_utils, mp.solutions.holistic
+    cv2.namedWindow("SignVaani recorder", cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # can be maximised
 
     try:
         with holistic_mod.Holistic(model_complexity=1, min_detection_confidence=0.5) as holistic:
