@@ -9,6 +9,7 @@ data/keypoints/
 data/synthetic/
 data/raw_videos/
 data/include_keypoints/
+data/unseen/
 
 # Training outputs
 runs/

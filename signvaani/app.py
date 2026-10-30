@@ -31,6 +31,7 @@ before Day 3. It does not recognise which sign it is and does not speak.
 """
 import argparse
 import csv
+import functools
 import time
 from pathlib import Path
 
@@ -53,14 +54,45 @@ def text_width(text, scale):
     return cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 2)[0][0]
 
 
-def fit(text, width, scale):
+def fit(text, width, scale, measure=None):
     """The end of `text` that fits in `width` pixels, with '...' in place of the words dropped from the front,
-    so the newest signs and words stay on screen."""
+    so the newest signs and words stay on screen. measure(text) -> pixels defaults to OpenCV's font."""
+    measure = measure or (lambda t: text_width(t, scale))
     words, dropped = text.split(" "), 0
     shown = lambda: " ".join(["..."] * bool(dropped) + words[dropped:])
-    while len(words) - dropped > 1 and text_width(shown(), scale) > width:
+    while len(words) - dropped > 1 and measure(shown()) > width:
         dropped += 1
     return shown()
+
+
+# OpenCV's fonts cannot draw Devanagari: the Hindi caption is drawn with Pillow and the first font found.
+HINDI_FONTS = ["C:/Windows/Fonts/Nirmala.ttf", "C:/Windows/Fonts/mangal.ttf",
+               "/System/Library/Fonts/Supplemental/Devanagari Sangam MN.ttc", "/System/Library/Fonts/Kohinoor.ttc",
+               "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+               "/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf",
+               "/usr/share/fonts/truetype/freefont/FreeSans.ttf"]
+
+
+@functools.lru_cache(maxsize=1)
+def hindi_font(size=26):
+    """A Devanagari font with proper shaping (Pillow built with Raqm), or None: then the caption stays
+    English while the speech is still Hindi."""
+    try:
+        from PIL import ImageFont, features
+    except ImportError:
+        return None
+    if not features.check("raqm"):  # without it, vowel signs and conjuncts would be drawn wrongly
+        return None
+    path = next((f for f in HINDI_FONTS if Path(f).is_file()), None)
+    return ImageFont.truetype(path, size, layout_engine=ImageFont.Layout.RAQM) if path else None
+
+
+def put_unicode(img, text, org, font, color=(255, 255, 255)):
+    """put() for text OpenCV cannot draw: Pillow draws it, outlined, straight onto the BGR frame."""
+    from PIL import Image, ImageDraw
+    pil = Image.fromarray(img)
+    ImageDraw.Draw(pil).text(org, text, font=font, fill=color, anchor="ls", stroke_width=3, stroke_fill=(0, 0, 0))
+    img[:] = np.asarray(pil)
 
 
 def summary(frames, seconds, latencies):
@@ -119,6 +151,7 @@ def main(argv=None):
     window, full = "SignVaani", args.fullscreen
     shown_probs, verdict = None, None  # the last classified window, and whether its sign was added
     frames, started, latencies = 0, time.time(), []
+    warned_hindi = False
     log = None
     if args.log:
         Path(args.log).parent.mkdir(parents=True, exist_ok=True)
@@ -160,13 +193,20 @@ def main(argv=None):
                 else:
                     verdict = (f"not added: below {args.confidence:.0%}", (0, 165, 255))
 
+            caption_font = hindi_font() if lang == "hi" and not args.preview else None
+            if lang == "hi" and not caption_font and not warned_hindi:
+                print("Hindi caption needs Pillow with Raqm and a Devanagari font: the caption stays English, "
+                      "the speech is Hindi")
+                warned_hindi = True
             if args.preview:
                 sentence = f"{len(glosses)} signs detected (preview, no model)"
             else:
-                sentence, _ = builder.build(glosses, "en")
+                sentence, _ = builder.build(glosses, "hi" if caption_font else "en")
             if (args.auto_speak and not args.preview and glosses and not spotter.active
                     and time.time() - last_sign_t > args.pause):
-                speak(builder.build(glosses, lang)[0], lang)
+                text = builder.build(glosses, lang)[0]
+                print(f"spoken ({lang}): {text}")
+                speak(text, lang)
                 glosses = []
 
             if show_skel:
@@ -195,15 +235,20 @@ def main(argv=None):
                 put(frame, verdict[0], (15, 60 + 25 * len(top)), 0.55, verdict[1])
             put(frame, "Signs: " + fit(" ".join(glosses), w - 30 - text_width("Signs: ", 0.6), 0.6),
                 (15, h - 50), 0.6, (0, 255, 255))
-            put(frame, fit(sentence, w - 30, 0.8), (15, h - 18), 0.8)
+            if caption_font:
+                put_unicode(frame, fit(sentence, w - 30, None, caption_font.getlength), (15, h - 18), caption_font)
+            else:
+                put(frame, fit(sentence, w - 30, 0.8), (15, h - 18), 0.8)
             cv2.imshow(window, frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 break
             if key == ord(" "):
-                if not args.preview:
-                    speak(builder.build(glosses, lang)[0], lang)
+                if not args.preview and glosses:
+                    text = builder.build(glosses, lang)[0]
+                    print(f"spoken ({lang}): {text}")
+                    speak(text, lang)
                 glosses = []
             elif key == ord("c"):
                 glosses = []

@@ -1,11 +1,15 @@
 """Live app control flow with a fake camera and a fake MediaPipe (no webcam, no model)."""
 import importlib
+import json
 import re
 import sys
 import types
+from pathlib import Path
 
 import numpy as np
 import pytest
+
+from signvaani.data import vocabulary
 
 Point = types.SimpleNamespace
 NORMAL, KEEPRATIO, FULLSCREEN = 0, 0, 1  # the real cv2 values (WINDOW_AUTOSIZE, the old default, is 1)
@@ -70,7 +74,7 @@ class Screen:
 
 @pytest.fixture
 def app(monkeypatch):
-    def run(argv, xs=(), frames=80, keys=(), classifier=None):
+    def run(argv, xs=(), frames=80, keys=(), classifier=None, patches=None):
         screen = Screen(frames, keys)
         camera = Point(read=lambda: (True, np.zeros((480, W, 3), np.uint8)), release=lambda: None)
         cv2 = Point(FONT_HERSHEY_SIMPLEX=0, LINE_AA=0, COLOR_BGR2RGB=0, VideoCapture=lambda index: camera,
@@ -89,6 +93,8 @@ def app(monkeypatch):
         monkeypatch.setattr(module, "speak", lambda text, lang: spoken.append(text))
         if classifier:
             monkeypatch.setattr(module, "SignClassifier", lambda path: classifier)
+        for name, value in (patches or {}).items():
+            monkeypatch.setattr(module, name, value)
         module.main(argv)
         return screen, spoken
 
@@ -179,3 +185,60 @@ def test_latency_log_and_summary(app, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "Frame rate:" in out and "FPS on average over 260 frames" in out
     assert "Latency, hands stop -> sign accepted: median" in out and "over 2 signs" in out
+
+
+DEMO = json.loads((Path(__file__).parents[1] / "configs" / "sentences.json").read_text(encoding="utf-8"))["sentences"]
+
+
+class Signs:
+    """Model stand-in that 'recognises' the given glosses one after the other, at 95% confidence."""
+    labels, seq_len = vocabulary(), 32
+
+    def __init__(self, glosses):
+        self.glosses, self.n = list(glosses), 0
+
+    def __call__(self, features):
+        p = np.full(len(self.labels), 0.05 / (len(self.labels) - 1))
+        p[self.labels.index(self.glosses[min(self.n, len(self.glosses) - 1)])] = 0.95
+        self.n += 1
+        return p
+
+
+def sign_sentence(app, tmp_path, glosses, argv, **kw):
+    """Sign `glosses` one movement each, then press SPACE: returns the screen, what was spoken, the model."""
+    model = tmp_path / "m.pt"
+    model.write_bytes(b"")
+    clf, n = Signs(glosses), len(glosses)
+    screen, spoken = app(["--model", str(model), *argv], one_sign() * n, frames=65 * n + 2,
+                         keys={65 * n: " "}, classifier=clf, **kw)
+    return screen, spoken, clf
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+@pytest.mark.parametrize("s", DEMO, ids=[s["id"] for s in DEMO])
+def test_signing_s1_to_s10_speaks_the_exact_sentence(app, tmp_path, s, lang):
+    """TC-07 / TC-08 end to end: signs from the spotter, sentence rules, SPACE, speech."""
+    _, spoken, clf = sign_sentence(app, tmp_path, s["glosses"], ["--lang", lang],
+                                   patches={"hindi_font": lambda: None})
+    assert clf.n == len(s["glosses"]) and spoken == [s[lang]]
+
+
+def test_auto_speak_after_the_pause(app, tmp_path):
+    model = tmp_path / "m.pt"
+    model.write_bytes(b"")
+    _, spoken = app(["--model", str(model), "--auto-speak", "--pause", "0"], one_sign(), frames=65,
+                    classifier=Signs(["HELP"]))
+    assert spoken == ["Please help me."]
+
+
+def test_hindi_caption_is_drawn_with_a_devanagari_font(app, tmp_path):
+    from signvaani.app import HINDI_FONTS
+    pil = pytest.importorskip("PIL.ImageFont")
+    font_path = next((f for f in HINDI_FONTS if Path(f).is_file()), None)
+    if font_path is None:
+        pytest.skip("no Devanagari font on this computer")
+    drawn = []
+    font = pil.truetype(font_path, 26)
+    patches = {"hindi_font": lambda: font, "put_unicode": lambda img, text, org, f, color=None: drawn.append(text)}
+    sign_sentence(app, tmp_path, ["ME", "NEED", "WATER"], ["--lang", "hi"], patches=patches)
+    assert "मुझे पानी चाहिए।" in drawn  # the caption shows the Hindi sentence, not the English one

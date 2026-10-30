@@ -41,7 +41,8 @@ screenshot or file name (keep screenshots in `docs/evidence/`, never with a face
   moving to the sign being accepted, and `--log` saves it per sign. It starts when the motion value falls
   below `--off`, a frame or two after the hands really stop, and leaves out the camera's own delay, so it
   is a little lower than what the camera sees. The filmed measurement is the official one; report both.
-- **TC-12:** s06 must not be in `data/keypoints` when the final model is trained. Count a sign as correct
+- **TC-12:** s06 is recorded into `data/unseen`, never into `data/keypoints`, so the final model cannot
+  train on it (`docs/day5.md`). Count a sign as correct
   only if it appears on the signs line, not if it is only in the top-3 bars.
 - **TC-10:** count only signs added to the signs line. "not added" lines are correct rejections.
 
