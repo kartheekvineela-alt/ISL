@@ -4,6 +4,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .landmarks import ALL_GROUPS, mask_features
+
 
 class SignClassifier:
     def __init__(self, path):
@@ -22,10 +24,12 @@ class SignClassifier:
             self._torch.eval()
         self.labels = meta["labels"]
         self.seq_len = meta["seq_len"]
+        # an ablation model only saw some landmark groups: hide the others the same way
+        self.parts, self.velocity = meta.get("parts", ALL_GROUPS), meta.get("velocity", True)
 
     def __call__(self, features):
         """features: (seq_len, FEATURE_DIM) -> probability per label."""
-        x = np.asarray(features, np.float32)[None]
+        x = mask_features(np.asarray(features, np.float32), self.parts, self.velocity)[None]
         if self._torch is None:
             logits = self._sess.run(None, {"features": x})[0][0]
         else:

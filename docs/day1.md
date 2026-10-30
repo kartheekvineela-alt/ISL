@@ -113,7 +113,7 @@ If a criterion fails, apply the fallback before Day 2 (blueprint Section 10):
 
 - **F1, MediaPipe install fails:** Python 3.10 exactly, `mediapipe==0.10.14`, `"numpy<2"`; or record on
   a teammate's laptop.
-- **F5, below 15 FPS in `check_install --camera 0`:** set `model_complexity=0` where `record.py` and
-  `app.py` create `Holistic`, use 640x480, close other apps.
+- **F5, below 15 FPS in `check_install --camera 0`:** run the recorder and the app with `--complexity 0`
+  (MediaPipe's fastest model), close other apps.
 - **F3, too few clean clips:** run `python -m signvaani.record --signer s01 --signs <SIGN>` again. It
   records only the missing takes.

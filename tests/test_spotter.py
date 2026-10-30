@@ -66,3 +66,19 @@ def test_trim_to_sign_keeps_the_window_the_live_spotter_classifies():
 
     unfinished = np.stack([frame(x) for x in [0.5] * 10 + list(0.5 + 0.1 * np.sin(np.linspace(0, 6 * np.pi, 30)))])
     assert moving(trim_to_sign(unfinished)) == moving(unfinished)  # still moving at the end of the take
+
+
+def test_quiet_since_marks_when_the_hands_stopped():
+    sp = SignSpotter(FakeClassifier([0.05, 0.95]))
+    xs = [0.5] * 10 + list(0.5 + 0.1 * np.sin(np.linspace(0, 4 * np.pi, 25))) + [0.5] * 20
+    hits = [(t, r) for t, r in enumerate(sp.update(frame(x), t=t) for t, x in enumerate(xs)) if r]
+    (t_hit, _), = hits
+    assert sp.quiet_since == t_hit - sp.quiet_frames + 1  # the first of the quiet frames that closed the window
+
+
+def test_no_latency_when_the_window_closes_while_still_moving():
+    clf = FakeClassifier([0.05, 0.95])
+    sp = SignSpotter(clf, max_frames=20)
+    xs = [0.5] * 10 + list(0.5 + 0.1 * np.sin(np.linspace(0, 12 * np.pi, 60)))
+    hits = [r for r in (sp.update(frame(x), t=t) for t, x in enumerate(xs)) if r]
+    assert hits and sp.quiet_since is None  # cut at max_frames, not by the hands stopping

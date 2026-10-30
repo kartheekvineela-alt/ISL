@@ -46,12 +46,15 @@ with a reason for each; if LOSO is below 60%, apply fallback F2/F3 before Day 4.
 
 ## Day 4: improve, compare, ablate, export. Date: ________
 
+Runbook: `docs/day4.md`. Best model: ________. ONNX check: ________. CPU ms / sign: PyTorch ___ ONNX ___.
+Weakest laptop: ________ FPS ___ ; latency median ___ ms, worst ___ ms.
+
 | Member | Done yesterday | Plan today | Blockers | Exit criteria met? |
 |---|---|---|---|---|
-| A | | | | |
-| B | | | | |
-| C | | | | |
-| D | | | | |
+| A | | Support B and C; re-record any sign the Day 3 confusion analysis flagged | | |
+| B | | `experiments compare` (R2), `experiments ablate` (R4), final model, ONNX export and check | | |
+| C | | Live app: overlay (TC-13), keys (TC-16), auto-speak; FPS and latency on the weakest laptop | | |
+| D | | Review `docs/test_cases.md`; report Chapter 5 (implementation) | | |
 
 Exit criteria: model comparison and ablation tables filled; `models/sign_model.onnx` and `.json`
 committed (or stored if large) and the app runs from ONNX; at least 15 FPS on the weakest laptop,

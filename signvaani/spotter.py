@@ -28,6 +28,7 @@ class SignSpotter:
         self._prev = None
         self._quiet = 0
         self._cool = 0
+        self.quiet_since = None  # time stamp of the frame where the hands stopped (start of the quiet run)
 
     def _motion(self, frame):
         left, right = hands_visible(frame)
@@ -46,9 +47,10 @@ class SignSpotter:
         speed = speed[np.isfinite(speed)]
         return float(speed.max()) if speed.size else 0.0
 
-    def update(self, frame):
-        """Feed one (N_POINTS, 3) frame. Returns (label, prob) when a sign is accepted."""
-        clip = self.segment(frame)
+    def update(self, frame, t=None):
+        """Feed one (N_POINTS, 3) frame, captured at time t. Returns (label, prob) when a sign is accepted;
+        then `quiet_since` is the t of the frame where the hands stopped (for latency, TC-14)."""
+        clip = self.segment(frame, t)
         if clip is None:
             return None
         probs = self.classifier(preprocess(clip, self.classifier.seq_len))
@@ -60,7 +62,7 @@ class SignSpotter:
         self._cool = self.cooldown
         return label, float(probs[best])
 
-    def segment(self, frame):
+    def segment(self, frame, t=None):
         """Feed one frame. Returns the raw window (T, N_POINTS, 3) when a sign window closes, else None."""
         m = self._motion(frame)
         self.energy = self.smoothing * self.energy + (1 - self.smoothing) * m
@@ -70,15 +72,19 @@ class SignSpotter:
         if not self.active:
             self.history.append(frame)
             if self.energy > self.on and self._cool == 0:
-                self.active, self.buffer, self._quiet = True, list(self.history), 0
+                self.active, self.buffer, self._quiet, self.quiet_since = True, list(self.history), 0, None
             return None
 
         self.buffer.append(frame)
         self._quiet = self._quiet + 1 if self.energy < self.off else 0
+        if self._quiet == 1:
+            self.quiet_since = t
         if self._quiet < self.quiet_frames and len(self.buffer) < self.max_frames:
             return None
 
         self.active = False
+        if self._quiet == 0:  # closed at max_frames while still moving: no "hands stopped" moment
+            self.quiet_since = None
         clip = np.stack(self.buffer[:len(self.buffer) - self._quiet // 2])
         self.buffer, self.history = [], deque(maxlen=self.history.maxlen)
         return clip if len(clip) >= self.min_frames else None

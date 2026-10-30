@@ -1,8 +1,8 @@
 import numpy as np
 
 from signvaani.augment import augment
-from signvaani.landmarks import (FEATURE_DIM, L_SHOULDER, LEFT_HAND, N_POINTS, R_SHOULDER,
-                                 interpolate_missing, normalize, preprocess, resample)
+from signvaani.landmarks import (FEATURE_DIM, GROUPS, L_SHOULDER, LEFT_HAND, N_POINTS, R_SHOULDER,
+                                 interpolate_missing, mask_features, normalize, preprocess, resample)
 
 
 def clip(t_len=40, seed=0):
@@ -57,3 +57,15 @@ def test_augment_keeps_shape_and_preprocesses():
         a = augment(clip(), rng)
         assert a.shape[1:] == (N_POINTS, 3)
         assert np.isfinite(preprocess(a)).all()
+
+
+def test_mask_features_hides_landmark_groups_and_velocities():
+    x = preprocess(clip(), 32)
+    assert mask_features(x) is x  # full model: unchanged
+    hands = mask_features(x, ["hands"]).reshape(32, N_POINTS, 6)
+    assert hands.shape == (32, N_POINTS, 6)
+    assert not hands[:, GROUPS["pose"]].any() and not hands[:, GROUPS["face"]].any()
+    assert np.array_equal(hands[:, GROUPS["hands"]], x.reshape(32, N_POINTS, 6)[:, GROUPS["hands"]])
+    positions_only = mask_features(x, velocity=False).reshape(32, N_POINTS, 6)
+    assert not positions_only[..., 3:].any() and np.array_equal(positions_only[..., :3], x.reshape(32, N_POINTS, 6)[..., :3])
+    assert x.reshape(32, N_POINTS, 6)[:, GROUPS["pose"]].any()  # the input itself is not changed
