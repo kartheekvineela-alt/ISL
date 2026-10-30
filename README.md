@@ -6,7 +6,7 @@ turns them into a grammatical sentence and speaks it in English or Hindi, on a l
 Scope (frozen on Day 1 of the 1-week blueprint): 15 hospital signs + `IDLE` in `configs/vocabulary.json`
 (ME, DOCTOR, PAIN, FEVER, HEAD, STOMACH, WATER, MEDICINE, TOILET, HELP, NEED, CALL, WHERE, YES, NO) and the demo
 sentences S1-S10 in `configs/sentences.json`. Runbooks: [Day 1](docs/day1.md), [Day 2](docs/day2.md),
-[Day 3](docs/day3.md), [Day 4](docs/day4.md).
+[Day 3](docs/day3.md), [Day 4](docs/day4.md), [Day 5](docs/day5.md).
 
 ```
 Webcam -> MediaPipe Holistic (hands, pose, face) -> 63 landmarks -> normalise + velocity (32 x 378)
@@ -23,7 +23,8 @@ Webcam -> MediaPipe Holistic (hands, pose, face) -> 63 landmarks -> normalise + 
 | `SignVaani_Research_Paper_IEEE_Draft.pdf` | IEEE-format paper template (replace every `[XX]` with measured results) |
 | `ISL_Literature_Survey_with_Links.pdf` | 24 related papers with links and the research gap |
 | `SignVaani_ISL_Dataset_Guide.pdf` | Dataset choice, recording protocol, datasheet and privacy checklist |
-| `day1.md` ... `day4.md` | Runbooks for Days 1-4: tasks, commands and exit criteria |
+| `day1.md` ... `day5.md` | Runbooks for Days 1-5: tasks, commands and exit criteria |
+| `bug_bash.md` | Day 5 bug bash: who tests what, severity, issue list |
 | `test_cases.md` | System test cases TC-01 to TC-18: how to run, expected result, linked unit tests, results columns |
 | `SRS.md`, `diagrams/` | Software requirements with traceability; architecture, DFD 0, use-case and sequence diagrams (`.drawio` + `.svg`) |
 | `results/` | Measured tables for the report (dataset stats, baselines, confused pairs), added as each day produces them |
@@ -83,6 +84,12 @@ python -m signvaani.experiments ablate --model gru --out docs/results/ablation.m
 python -m signvaani.train --data data/keypoints --final --val-signers s05 --out models/best.pt
 python -m signvaani.export_onnx --ckpt models/best.pt
 python -m signvaani.app --model models/sign_model.onnx --lang en --log runs/live_log.csv
+
+# 4. Day 5: speech check, offline Hindi, unseen signer
+python -m signvaani.speech --demo --lang hi        # speak S1-S10
+python -m signvaani.speech --cache                 # Hindi audio for offline use (F7)
+python -m signvaani.record --signer s06 --takes 3 --out data/unseen
+python -m signvaani.evaluate --ckpt models/best.pt --data data/unseen --signers s06 --out docs/results/s06
 ```
 
 Live app keys: `SPACE` speak, `c` clear, `u` undo, `l` switch English/Hindi, `s` skeleton on/off, `f` full
@@ -115,7 +122,7 @@ Dataset). `signvaani.make_synthetic` only feeds the automated tests; never train
 | `signvaani/train.py`, `evaluate.py`, `export_onnx.py`, `inference.py` | Training, metrics, ONNX export, inference |
 | `signvaani/spotter.py` | Real-time sign start/end detection |
 | `signvaani/sentence.py`, `rules.json` | ISL gloss order -> English / Hindi sentences |
-| `signvaani/speech.py` | Text-to-speech (pyttsx3 offline English, gTTS Hindi) |
+| `signvaani/speech.py` | Text-to-speech (pyttsx3 offline English, gTTS Hindi with offline cache), S1-S10 demo |
 | `signvaani/record.py`, `app.py` | Guided recorder and live app |
 | `signvaani/check_install.py`, `check_data.py` | Install check; recorded-data check and wrist-path plots |
 | `signvaani/qc.py`, `dataset_stats.py` | Quality control (weak takes, possible wrong signs, re-record list); dataset statistics (Table R1) |
@@ -136,5 +143,5 @@ Fill in from your own runs (see blueprint Section 9).
 ## Limitations
 
 Isolated signs from one domain only; small number of signers; no full ISL grammar; Hindi speech needs internet
-unless cached. Signs and Hindi sentences must be verified by an ISL user and a native speaker. This tool supports,
+unless cached (`python -m signvaani.speech --cache`). Signs and Hindi sentences must be verified by an ISL user and a native speaker. This tool supports,
 and does not replace, human interpreters.

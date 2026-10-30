@@ -113,7 +113,8 @@ def train_one(train, val, test, labels, args, out_path=None):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model": args.model, "state_dict": best_state, "labels": labels,
                     "seq_len": args.seq_len, "feature_dim": FEATURE_DIM, "trim": args.trim,
-                    "parts": list(args.parts), "velocity": args.velocity}, out_path)
+                    "parts": list(args.parts), "velocity": args.velocity,
+                    "train_signers": sorted({c.signer for c in train + val})}, out_path)
         print(f"saved {out_path}")
     return best_acc, result
 

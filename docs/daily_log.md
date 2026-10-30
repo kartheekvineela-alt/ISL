@@ -62,12 +62,15 @@ otherwise fallback F5.
 
 ## Day 5: integration, sentence and speech. Date: ________
 
+Runbook: `docs/day5.md`. S1-S10 English ___ / 11, Hindi ___ / 11. s06 offline: top-1 ___ , macro-F1 ___.
+Bugs found ___ , fixed ___ . Tag v1.0 pushed: ___.
+
 | Member | Done yesterday | Plan today | Blockers | Exit criteria met? |
 |---|---|---|---|---|
-| A | | | | |
-| B | | | | |
-| C | | | | |
-| D | | | | |
+| A | | Record s06 into `data/unseen` (consent first); bug bash: all 15 signs | | |
+| B | | Evaluate the final model on s06; bug bash: S1-S10 in both languages; help C fix bugs | | |
+| C | | S1-S10 end to end with speech (`speech --demo`, `--cache`); bug bash; fix top bugs; tag v1.0 | | |
+| D | | Bug bash: idle and false triggers; report Chapter 5 | | |
 
 Exit criteria: S1-S10 produce the correct English and Hindi sentence and are spoken aloud; offline
 test-signer result recorded; code freeze tag v1.0 on GitHub.

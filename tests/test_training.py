@@ -17,7 +17,14 @@ def test_train_export_on_synthetic_data(tmp_path):
     assert torch.load(ckpt, map_location="cpu")["trim"] is True
     out = run("signvaani.evaluate", "--ckpt", str(ckpt), "--data", str(data), "--signers", "s02",
               "--out", str(tmp_path / "eval")).stdout
-    assert "clips 12 | top-1" in out
+    assert "clips 12 | top-1" in out and "WARNING" not in out
+    assert torch.load(ckpt, map_location="cpu")["train_signers"] == ["s00", "s01"]
+    summary = (tmp_path / "eval" / "summary.md").read_text(encoding="utf-8")
+    assert "| s02 | yes | 12 |" in summary and "| SIGN0 | 4 |" in summary
+    out = run("signvaani.evaluate", "--ckpt", str(ckpt), "--data", str(data), "--signers", "s00",
+              "--out", str(tmp_path / "eval_seen")).stdout
+    assert "WARNING: s00 was in this model's training data" in out
+    assert "| s00 | NO |" in (tmp_path / "eval_seen" / "summary.md").read_text(encoding="utf-8")
 
     import json
     record, = (tmp_path / "runs").glob("signer_gru_*.json")
