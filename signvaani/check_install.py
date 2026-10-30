@@ -109,7 +109,7 @@ def check_camera(cv2, mp, index, seconds):
     msg = f"camera {index}: {width}x{height}, {fps:.1f} FPS with MediaPipe, hands in {hands}/{frames} frames"
     if fps >= 15:
         return "OK", msg
-    return "WARN", msg + " - below 15 FPS: fallback F5 (model_complexity=0, 640x480, close other apps)"
+    return "WARN", msg + " - below 15 FPS: fallback F5 (run the app and recorder with --complexity 0, close other apps)"
 
 
 def main(argv=None):

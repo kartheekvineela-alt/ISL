@@ -38,6 +38,8 @@ def main(argv=None):
     p.add_argument("--seconds", type=float, default=2.5)
     p.add_argument("--out", default="data/keypoints")
     p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--complexity", type=int, choices=[0, 1, 2], default=1,
+                   help="MediaPipe Holistic model: 0 is fastest (fallback F5); use the same value as the app")
     args = p.parse_args(argv)
 
     if not SIGNER_ID.fullmatch(args.signer):
@@ -58,7 +60,7 @@ def main(argv=None):
     cv2.namedWindow("SignVaani recorder", cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # can be maximised
 
     try:
-        with holistic_mod.Holistic(model_complexity=1, min_detection_confidence=0.5) as holistic:
+        with holistic_mod.Holistic(model_complexity=args.complexity, min_detection_confidence=0.5) as holistic:
             def read():
                 ok, frame = cap.read()
                 if not ok:

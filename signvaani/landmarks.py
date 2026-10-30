@@ -112,3 +112,22 @@ def normalize(seq):
 def preprocess(raw_seq, length=32):
     """Raw clip (T, N_POINTS, 3) with NaN -> model input (length, FEATURE_DIM)."""
     return normalize(resample(interpolate_missing(raw_seq), length))
+
+
+# Landmark groups for the ablation study (blueprint Table R4).
+GROUPS = {"pose": slice(0, N_POSE), "face": slice(N_POSE, N_POSE + N_FACE), "hands": slice(N_POSE + N_FACE, N_POINTS)}
+ALL_GROUPS = ("hands", "pose", "face")
+
+
+def mask_features(x, parts=ALL_GROUPS, velocity=True):
+    """Zero the features of the landmark groups not in `parts`, and all velocities when velocity=False.
+    The size stays (T, FEATURE_DIM), so every model and the live app work unchanged."""
+    if set(parts) >= set(ALL_GROUPS) and velocity:
+        return x
+    x = np.array(x, np.float32, copy=True).reshape(len(x), N_POINTS, 6)  # per point: x, y, z, vx, vy, vz
+    for name, points in GROUPS.items():
+        if name not in parts:
+            x[:, points] = 0.0
+    if not velocity:
+        x[:, :, 3:] = 0.0
+    return x.reshape(len(x), FEATURE_DIM)

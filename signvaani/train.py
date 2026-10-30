@@ -13,6 +13,12 @@ Examples:
     # INCLUDE-50, official split (real public ISL data; the split name stands in for the signer)
     python -m signvaani.train --data data/include_keypoints/include50 --test-signers test --val-signers val
 
+    # Final model for the app (Day 4): every signer trains except a validation signer, no test set
+    python -m signvaani.train --data data/keypoints --final --val-signers s05 --out models/best.pt
+
+    # Ablation (Day 4, Table R4): landmark groups, augmentation and velocity features can be switched off
+    python -m signvaani.train --data data/keypoints --loso --parts hands pose --no-augment --no-velocity
+
 Two defaults make the model behave better live (switch off with --no-balance / --no-trim):
   - signs with fewer training clips get a larger weight in the loss, so a sign with 6 clips counts as
     much as one with 15 and the model does not fall back to the biggest classes;
@@ -35,7 +41,7 @@ from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader
 
 from .data import SignDataset, index_clips, random_split, signers, split_by_signer
-from .landmarks import FEATURE_DIM
+from .landmarks import ALL_GROUPS, FEATURE_DIM
 from .models import build_model
 
 
@@ -70,7 +76,8 @@ def train_one(train, val, test, labels, args, out_path=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(args.seed)
     mk = lambda clips, tr: DataLoader(SignDataset(clips, labels, args.seq_len, train=tr, seed=args.seed,
-                                                  trim=args.trim),
+                                                  trim=args.trim, augment=args.augment, parts=args.parts,
+                                                  velocity=args.velocity),
                                       batch_size=args.batch_size, shuffle=tr, num_workers=args.workers)
     train_dl, val_dl = mk(train, True), mk(val, False)
     model = build_model(args.model, FEATURE_DIM, len(labels)).to(device)
@@ -105,7 +112,8 @@ def train_one(train, val, test, labels, args, out_path=None):
     if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model": args.model, "state_dict": best_state, "labels": labels,
-                    "seq_len": args.seq_len, "feature_dim": FEATURE_DIM, "trim": args.trim}, out_path)
+                    "seq_len": args.seq_len, "feature_dim": FEATURE_DIM, "trim": args.trim,
+                    "parts": list(args.parts), "velocity": args.velocity}, out_path)
         print(f"saved {out_path}")
     return best_acc, result
 
@@ -127,22 +135,60 @@ def predict(model, loader, clips, labels, device):
             "macro_f1": float(f1_score(y, pred, labels=np.unique(y), average="macro", zero_division=0))}
 
 
-def save_run(mode, folds, labels, args):
-    """runs/<mode>_<model>_<time>.json with the summary and every fold's predictions."""
+def save_run(mode, folds, labels, args, tag=""):
+    """runs/<mode>_<model><tag>_<time>.json with the summary and every fold's predictions."""
     top1 = np.array([f["top1"] for f in folds])
     run = {"mode": mode, "model": args.model, "data": Path(args.data).as_posix(), "labels": labels,
            "parameters": sum(p.numel() for p in build_model(args.model, FEATURE_DIM, len(labels)).parameters()),
            "mean": float(top1.mean()), "std": float(top1.std()),
            "macro_f1_mean": float(np.mean([f["macro_f1"] for f in folds])),
-           "per_signer": {f["name"]: f["top1"] for f in folds}, "folds": folds, "args": vars(args)}
+           "per_signer": {f["name"]: f["top1"] for f in folds}, "folds": folds,
+           "args": {k: list(v) if isinstance(v, tuple) else v for k, v in vars(args).items()}}
     Path(args.runs).mkdir(parents=True, exist_ok=True)
-    out = Path(args.runs) / f"{mode}_{args.model}_{time.strftime('%Y%m%d-%H%M%S')}.json"
+    stem = f"{mode}_{args.model}{tag}_{time.strftime('%Y%m%d-%H%M%S')}"
+    out, n = Path(args.runs) / f"{stem}.json", 1
+    while out.exists():  # two runs in the same second (e.g. signvaani.experiments) keep both records
+        out, n = Path(args.runs) / f"{stem}-{n}.json", n + 1
     out.write_text(json.dumps(run, indent=1))
     print(f"saved {out}  (next: python -m signvaani.confusion {out.as_posix()})")
     return out
 
 
-def main(argv=None):
+OFFICIAL_SPLIT = {"train", "val", "test"}  # INCLUDE folders: the split name stands in for the signer
+
+
+def loso(clips, labels, args):
+    """Leave-one-signer-out: one fold per signer, each tested on the signer it left out."""
+    folds = []
+    for s in signers(clips):
+        print(f"\n===== fold: test signer {s} =====")
+        train, val, test = split_by_signer(clips, [s], seed=args.seed)
+        val_acc, result = train_one(train, val, test, labels, args)
+        folds.append({"name": s, "test_signers": [s], "val_acc": val_acc, **result})
+    print("\nLOSO top-1 per test signer:")
+    for f in folds:
+        print(f"  {f['name']}: {f['top1']:.4f}  (macro-F1 {f['macro_f1']:.4f}, {f['n']} clips)")
+    top1 = np.array([f["top1"] for f in folds])
+    print(f"LOSO mean top-1 = {top1.mean():.4f} +/- {top1.std():.4f}, "
+          f"macro-F1 {np.mean([f['macro_f1'] for f in folds]):.4f}")
+    return folds
+
+
+def one_split(clips, labels, args, test_signers=(), val_signers=(), random=False, out_path=None):
+    """A single train / val / test split -> [fold], or [] when there is no test set."""
+    if random:
+        name, (train, val, test) = "random", random_split(clips, seed=args.seed)
+    else:
+        name = "+".join(test_signers)
+        train, val, test = split_by_signer(clips, test_signers, val_signers, seed=args.seed)
+    print(f"train {len(train)} / val {len(val)} / test {len(test)} clips")
+    val_acc, result = train_one(train, val, test, labels, args, out_path)
+    if not result:
+        return []
+    return [{"name": name, "test_signers": sorted({c.signer for c in test}), "val_acc": val_acc, **result}]
+
+
+def make_parser():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--data", default="data/keypoints")
     p.add_argument("--model", default="gru", choices=["gru", "transformer", "cnn"])
@@ -150,6 +196,8 @@ def main(argv=None):
     p.add_argument("--val-signers", nargs="*", default=[])
     p.add_argument("--loso", action="store_true", help="leave-one-signer-out cross-validation")
     p.add_argument("--random-split", action="store_true", help="signer-dependent random split")
+    p.add_argument("--final", action="store_true",
+                   help="train the model for the app on every signer except --val-signers (no test set)")
     p.add_argument("--seq-len", type=int, default=32)
     p.add_argument("--epochs", type=int, default=120)
     p.add_argument("--patience", type=int, default=25)
@@ -163,6 +211,16 @@ def main(argv=None):
                    help="do not weight the loss by class size")
     p.add_argument("--no-trim", dest="trim", action="store_false",
                    help="train on whole clips instead of the window the live spotter cuts out")
+    p.add_argument("--parts", nargs="+", choices=ALL_GROUPS, default=list(ALL_GROUPS),
+                   help="landmark groups the model sees (ablation): hands, pose, face")
+    p.add_argument("--no-augment", dest="augment", action="store_false", help="ablation: no augmentation")
+    p.add_argument("--no-velocity", dest="velocity", action="store_false",
+                   help="ablation: positions only, velocity features set to zero")
+    return p
+
+
+def main(argv=None):
+    p = make_parser()
     args = p.parse_args(argv)
 
     clips = index_clips(args.data)
@@ -170,40 +228,29 @@ def main(argv=None):
     people = signers(clips)
     print(f"{len(clips)} clips, {len(labels)} classes, {len(people)} signers: {people}")
 
+    if args.final:
+        if args.loso or args.random_split or args.test_signers:
+            p.error("--final trains the model for the app and has no test set; report LOSO numbers instead")
+        print("final model: " + (f"validation signers {args.val_signers}" if args.val_signers
+                                 else "15% of the clips for validation"))
+        one_split(clips, labels, args, val_signers=args.val_signers, out_path=Path(args.out))
+        return
+
     if args.loso:
-        if set(people) <= {"train", "val", "test"}:
+        if set(people) <= OFFICIAL_SPLIT:
             p.error("these folders hold an official split (INCLUDE), not signers: use "
                     "--test-signers test --val-signers val instead of --loso")
-        folds = []
-        for s in people:
-            print(f"\n===== fold: test signer {s} =====")
-            train, val, test = split_by_signer(clips, [s], seed=args.seed)
-            val_acc, result = train_one(train, val, test, labels, args)
-            folds.append({"name": s, "test_signers": [s], "val_acc": val_acc, **result})
-        print("\nLOSO top-1 per test signer:")
-        for f in folds:
-            print(f"  {f['name']}: {f['top1']:.4f}  (macro-F1 {f['macro_f1']:.4f}, {f['n']} clips)")
-        top1 = np.array([f["top1"] for f in folds])
-        print(f"LOSO mean top-1 = {top1.mean():.4f} +/- {top1.std():.4f}, "
-              f"macro-F1 {np.mean([f['macro_f1'] for f in folds]):.4f}")
-        if top1.mean() < 0.6:
+        folds = loso(clips, labels, args)
+        if np.mean([f["top1"] for f in folds]) < 0.6:
             print("LOSO mean is below 60%: apply fallback F2 / F3 before Day 4 (docs/day3.md)")
         save_run("loso", folds, labels, args)
         return
 
-    if args.random_split:
-        mode, name = "random", "random"
-        train, val, test = random_split(clips, seed=args.seed)
-    else:
-        if not args.test_signers:
-            p.error("give --test-signers (signer-independent), --loso, or --random-split")
-        mode, name = "signer", "+".join(args.test_signers)
-        train, val, test = split_by_signer(clips, args.test_signers, args.val_signers, seed=args.seed)
-    print(f"train {len(train)} / val {len(val)} / test {len(test)} clips")
-    val_acc, result = train_one(train, val, test, labels, args, Path(args.out))
-    if result:
-        save_run(mode, [{"name": name, "test_signers": sorted({c.signer for c in test}), "val_acc": val_acc,
-                         **result}], labels, args)
+    if not args.random_split and not args.test_signers:
+        p.error("give --test-signers (signer-independent), --loso, --random-split or --final")
+    folds = one_split(clips, labels, args, args.test_signers, args.val_signers, args.random_split, Path(args.out))
+    if folds:
+        save_run("random" if args.random_split else "signer", folds, labels, args)
 
 
 if __name__ == "__main__":

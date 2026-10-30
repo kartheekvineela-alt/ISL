@@ -1,5 +1,6 @@
 """Live app control flow with a fake camera and a fake MediaPipe (no webcam, no model)."""
 import importlib
+import re
 import sys
 import types
 
@@ -77,7 +78,7 @@ def app(monkeypatch):
                     imshow=screen.imshow, waitKey=screen.waitKey, destroyAllWindows=lambda: None,
                     namedWindow=screen.namedWindow, setWindowProperty=screen.setWindowProperty,
                     WINDOW_NORMAL=NORMAL, WINDOW_KEEPRATIO=KEEPRATIO, WND_PROP_FULLSCREEN=0,
-                    WINDOW_FULLSCREEN=FULLSCREEN, getTextSize=text_size)
+                    WINDOW_FULLSCREEN=FULLSCREEN, getTextSize=text_size, rectangle=lambda *a: None)
         holistic = Point(Holistic=MovingBody(xs), POSE_CONNECTIONS=None, HAND_CONNECTIONS=None)
         mp = Point(solutions=Point(holistic=holistic, drawing_utils=Point(draw_landmarks=lambda *a: None)))
         monkeypatch.setitem(sys.modules, "cv2", cv2)
@@ -148,7 +149,8 @@ def test_newest_signs_stay_on_screen_and_rejected_signs_say_why(app, tmp_path):
     assert clf.n >= 24  # (nearly) every movement was classified
 
     texts = [t.split("|")[:-1][::2] for t in screen.shown]  # put() draws each text twice: outline, then colour
-    verdicts = {line for lines in texts for line in lines if line.startswith(("added", "not added"))}
+    verdicts = {re.sub(r" \(\d+ ms\)$", "", line) for lines in texts for line in lines  # drop the latency
+                if line.startswith(("added", "not added"))}
     assert verdicts == {"added: HAPPY", "added: SAD", "not added: below 80%", "not added: IDLE (no sign)"}
 
     *_, signs, sentence = texts[-1]
@@ -163,3 +165,17 @@ def test_fit_keeps_the_end_of_the_text(app):
     assert fit("HAPPY SAD", 1000, 0.6) == "HAPPY SAD"
     assert fit("ONE TWO THREE FOUR FIVE", int(15 * CHAR * 0.6), 0.6) == "... FOUR FIVE"
     assert fit("AVERYLONGSIGNNAME", 10, 0.6) == "AVERYLONGSIGNNAME"  # one word is never dropped
+
+
+def test_latency_log_and_summary(app, tmp_path, capsys):
+    import csv
+    model, log = tmp_path / "m.pt", tmp_path / "runs" / "live.csv"
+    model.write_bytes(b"")
+    clf = TakeTurns([[0.05, 0.9, 0.05], [0.3, 0.1, 0.6]])  # one sign added, the next one too weak
+    app(["--model", str(model), "--log", str(log)], one_sign() * 4, frames=4 * 65, classifier=clf)
+    rows = list(csv.DictReader(open(log, encoding="utf-8")))
+    assert [r["sign"] for r in rows] == ["HAPPY", "HAPPY"]
+    assert all(0 <= float(r["latency_ms"]) < 1000 for r in rows)
+    out = capsys.readouterr().out
+    assert "Frame rate:" in out and "FPS on average over 260 frames" in out
+    assert "Latency, hands stop -> sign accepted: median" in out and "over 2 signs" in out

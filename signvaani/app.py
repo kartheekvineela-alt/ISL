@@ -7,8 +7,8 @@
 Keys: SPACE = speak sentence, c = clear, u = undo last sign, l = toggle language,
       s = toggle skeleton, f = full screen on/off, q = quit.
 The window can also be resized or maximised; only the display grows, the camera stays at 640x480.
-Top left: the model's top-3 guesses for the last movement, then whether that sign was added to the
-sentence or not (and why: below --confidence, or IDLE). The signs line and the sentence at the bottom
+Top left: the model's top-3 guesses for the last movement as confidence bars, then whether that sign was
+added to the sentence or not (and why: below --confidence, or IDLE). The signs line and the sentence at the bottom
 keep the newest words on screen; c clears them, SPACE speaks and clears.
 A sentence is also spoken automatically after --pause seconds without signing
 when --auto-speak is on.
@@ -18,11 +18,19 @@ rest and rise above --on during every sign. Signs missed: lower --on. False sign
 --on (F4). Two signs merged: lower --quiet-frames or pause longer between signs (F6).
     python -m signvaani.app --model models/best.pt --on 0.03 --off 0.012 --quiet-frames 6
 
+Measuring speed (Day 4, TC-01 and TC-14): each accepted sign prints its latency, the time from the frame
+where the hands stopped moving to the sign being accepted. On quit the app prints the average frame rate
+and the median and worst latency; --log saves every sign to a CSV file as test evidence. The latency
+starts when the motion value falls below --off, a frame or two after the hands really stop, and leaves out
+the camera's own delay, so the filmed TC-14 measurement stays the official one.
+    python -m signvaani.app --model models/sign_model.onnx --log runs/live_log.csv
+
 --preview needs no trained model. It shows the skeleton, the motion value and every sign the spotter
 detects (as SIGN, with a count), so the camera, MediaPipe and the spotter thresholds can be checked
 before Day 3. It does not recognise which sign it is and does not speak.
 """
 import argparse
+import csv
 import time
 from pathlib import Path
 
@@ -55,6 +63,18 @@ def fit(text, width, scale):
     return shown()
 
 
+def summary(frames, seconds, latencies):
+    """Lines printed on quit: average frame rate (TC-01) and sign latency (TC-14)."""
+    lines = [f"Frame rate: {frames / max(seconds, 1e-6):.1f} FPS on average over {frames} frames "
+             f"({seconds:.0f} s); TC-01 needs at least 15."]
+    if latencies:
+        lines.append(f"Latency, hands stop -> sign accepted: median {np.median(latencies):.0f} ms, "
+                     f"worst {max(latencies):.0f} ms over {len(latencies)} signs; TC-14 needs at most 500 ms.")
+    else:
+        lines.append("Latency: no sign was accepted.")
+    return lines
+
+
 class MotionOnly:
     """Stand-in classifier for --preview: every window the spotter closes counts as one SIGN."""
     labels = ["SIGN"]
@@ -80,6 +100,9 @@ def main(argv=None):
     p.add_argument("--fullscreen", action="store_true", help="start in full screen (f toggles it)")
     p.add_argument("--preview", action="store_true",
                    help="no model needed: camera, skeleton and sign detection only, nothing is recognised")
+    p.add_argument("--log", help="CSV file that records every accepted sign with its latency")
+    p.add_argument("--complexity", type=int, choices=[0, 1, 2], default=1,
+                   help="MediaPipe Holistic model: 0 is fastest (fallback F5 when below 15 FPS), 2 most accurate")
     args = p.parse_args(argv)
     if not args.preview and not Path(args.model).is_file():
         p.error(f"no model at {args.model}: train one first (docs/day3.md), or check the camera, skeleton and "
@@ -95,28 +118,43 @@ def main(argv=None):
     fps_t, fps = time.time(), 0.0
     window, full = "SignVaani", args.fullscreen
     shown_probs, verdict = None, None  # the last classified window, and whether its sign was added
+    frames, started, latencies = 0, time.time(), []
+    log = None
+    if args.log:
+        Path(args.log).parent.mkdir(parents=True, exist_ok=True)
+        log_file = open(args.log, "a", newline="", encoding="utf-8")
+        log = csv.writer(log_file)
+        if log_file.tell() == 0:
+            log.writerow(["time", "sign", "confidence", "latency_ms", "fps"])
     cv2.namedWindow(window, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # resizable, keeps 4:3
     if full:
         cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-    with holistic_mod.Holistic(model_complexity=1) as holistic:
+    with holistic_mod.Holistic(model_complexity=args.complexity) as holistic:
         while True:
             ok, frame = cap.read()
             if not ok:
                 break
+            captured, frames = time.time(), frames + 1
             frame = cv2.flip(frame, 1)
             res = holistic.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             kp = frame_keypoints(res)
 
-            hit = spotter.update(kp)
+            hit = spotter.update(kp, captured)
             if hit:
                 glosses.append(hit[0])
                 last_sign_t = time.time()
-                print(f"sign: {hit[0]} ({hit[1]:.2f})")
+                latency = None if spotter.quiet_since is None else 1000 * (last_sign_t - spotter.quiet_since)
+                if latency is not None:
+                    latencies.append(latency)
+                print(f"sign: {hit[0]} ({hit[1]:.2f})" + ("" if latency is None else f"  latency {latency:.0f} ms"))
+                if log:
+                    log.writerow([time.strftime("%H:%M:%S"), hit[0], f"{hit[1]:.3f}",
+                                  "" if latency is None else f"{latency:.0f}", f"{fps:.1f}"])
             if spotter.last_probs is not shown_probs:  # a window was just classified: say what happened to it
                 shown_probs = spotter.last_probs
                 if hit:
-                    verdict = (f"added: {hit[0]}", (0, 255, 0))
+                    verdict = (f"added: {hit[0]}" + ("" if latency is None else f" ({latency:.0f} ms)"), (0, 255, 0))
                 elif clf.labels[int(np.argmax(shown_probs))] == spotter.idle_label:
                     verdict = ("not added: IDLE (no sign)", (0, 165, 255))
                 else:
@@ -148,8 +186,12 @@ def main(argv=None):
                        f"{fps:.0f} FPS   {mode}", (15, 30), 0.6, status[1])
             if spotter.last_probs is not None and not args.preview:
                 top = np.argsort(-spotter.last_probs)[:3]
-                for i, k in enumerate(top):
-                    put(frame, f"{clf.labels[k]:<14} {spotter.last_probs[k]:.0%}", (15, 60 + 25 * i), 0.55)
+                for i, k in enumerate(top):  # confidence bars: the best guess in green
+                    y, prob = 60 + 25 * i, float(spotter.last_probs[k])
+                    cv2.rectangle(frame, (15, y - 16), (175, y + 5), (40, 40, 40), -1)
+                    cv2.rectangle(frame, (15, y - 16), (15 + int(160 * prob), y + 5),
+                                  (0, 160, 0) if i == 0 else (110, 110, 110), -1)
+                    put(frame, f"{clf.labels[k]} {prob:.0%}", (20, y), 0.55)
                 put(frame, verdict[0], (15, 60 + 25 * len(top)), 0.55, verdict[1])
             put(frame, "Signs: " + fit(" ".join(glosses), w - 30 - text_width("Signs: ", 0.6), 0.6),
                 (15, h - 50), 0.6, (0, 255, 255))
@@ -177,6 +219,10 @@ def main(argv=None):
                                       cv2.WINDOW_FULLSCREEN if full else cv2.WINDOW_NORMAL)
     cap.release()
     cv2.destroyAllWindows()
+    if log:
+        log_file.close()
+    for line in summary(frames, time.time() - started, latencies):
+        print(line)
 
 
 if __name__ == "__main__":

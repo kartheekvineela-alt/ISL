@@ -12,8 +12,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .augment import augment
-from .landmarks import preprocess
+from .augment import augment as augment_clip
+from .landmarks import ALL_GROUPS, mask_features, preprocess
 from .spotter import trim_to_sign
 
 VOCAB = Path(__file__).resolve().parents[1] / "configs" / "vocabulary.json"
@@ -86,13 +86,16 @@ try:
     from torch.utils.data import Dataset
 
     class SignDataset(Dataset):
-        def __init__(self, clips, labels, seq_len=32, train=False, seed=0, trim=False):
-            """trim: use only the part of each clip the live spotter would cut out (spotter.trim_to_sign)."""
+        def __init__(self, clips, labels, seq_len=32, train=False, seed=0, trim=False, augment=True,
+                     parts=ALL_GROUPS, velocity=True):
+            """trim: use only the part of each clip the live spotter would cut out (spotter.trim_to_sign).
+            augment, parts, velocity: the ablation switches (augmentation, landmark groups, velocities)."""
             self.clips = clips
             self.label_to_id = {l: i for i, l in enumerate(labels)}
             self.seq_len = seq_len
             self.train = train
             self.trim = trim
+            self.augment, self.parts, self.velocity = augment, tuple(parts), velocity
             self.rng = np.random.default_rng(seed)
             self._trimmed = {}  # the cut is the same every epoch, so it is done once per clip
 
@@ -107,9 +110,9 @@ try:
                 raw = self._trimmed[i]
             else:
                 raw = self._trimmed[i] = trim_to_sign(np.load(clip.path))
-            if self.train:
-                raw = augment(raw, self.rng)
-            x = preprocess(raw, self.seq_len)
+            if self.train and self.augment:
+                raw = augment_clip(raw, self.rng)
+            x = mask_features(preprocess(raw, self.seq_len), self.parts, self.velocity)
             return torch.from_numpy(x), self.label_to_id[clip.sign]
 except ImportError:  # torch is only needed for training
     pass

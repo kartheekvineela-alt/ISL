@@ -6,7 +6,7 @@ turns them into a grammatical sentence and speaks it in English or Hindi, on a l
 Scope (frozen on Day 1 of the 1-week blueprint): 15 hospital signs + `IDLE` in `configs/vocabulary.json`
 (ME, DOCTOR, PAIN, FEVER, HEAD, STOMACH, WATER, MEDICINE, TOILET, HELP, NEED, CALL, WHERE, YES, NO) and the demo
 sentences S1-S10 in `configs/sentences.json`. Runbooks: [Day 1](docs/day1.md), [Day 2](docs/day2.md),
-[Day 3](docs/day3.md).
+[Day 3](docs/day3.md), [Day 4](docs/day4.md).
 
 ```
 Webcam -> MediaPipe Holistic (hands, pose, face) -> 63 landmarks -> normalise + velocity (32 x 378)
@@ -23,7 +23,8 @@ Webcam -> MediaPipe Holistic (hands, pose, face) -> 63 landmarks -> normalise + 
 | `SignVaani_Research_Paper_IEEE_Draft.pdf` | IEEE-format paper template (replace every `[XX]` with measured results) |
 | `ISL_Literature_Survey_with_Links.pdf` | 24 related papers with links and the research gap |
 | `SignVaani_ISL_Dataset_Guide.pdf` | Dataset choice, recording protocol, datasheet and privacy checklist |
-| `day1.md`, `day2.md`, `day3.md` | Runbooks for Days 1-3: tasks, commands and exit criteria |
+| `day1.md` ... `day4.md` | Runbooks for Days 1-4: tasks, commands and exit criteria |
+| `test_cases.md` | System test cases TC-01 to TC-18: how to run, expected result, linked unit tests, results columns |
 | `SRS.md`, `diagrams/` | Software requirements with traceability; architecture, DFD 0, use-case and sequence diagrams (`.drawio` + `.svg`) |
 | `results/` | Measured tables for the report (dataset stats, baselines, confused pairs), added as each day produces them |
 | `recording_protocol.md` | Recording session checklist, consent form and consent register |
@@ -75,10 +76,13 @@ python -m signvaani.train --data data/keypoints --random-split
 python -m signvaani.train --data data/keypoints --test-signers s05 --val-signers s04
 python -m signvaani.confusion runs/loso_gru_<time>.json     # confusion matrices, Tables R3 and R6
 python -m signvaani.evaluate --ckpt models/best.pt --signers s05
+python -m signvaani.experiments compare --out docs/results/model_comparison.md   # Table R2
+python -m signvaani.experiments ablate --model gru --out docs/results/ablation.md # Table R4
 
-# 3. Export and run live
+# 3. Final model, export (checks ONNX = PyTorch) and run live
+python -m signvaani.train --data data/keypoints --final --val-signers s05 --out models/best.pt
 python -m signvaani.export_onnx --ckpt models/best.pt
-python -m signvaani.app --model models/sign_model.onnx --lang en
+python -m signvaani.app --model models/sign_model.onnx --lang en --log runs/live_log.csv
 ```
 
 Live app keys: `SPACE` speak, `c` clear, `u` undo, `l` switch English/Hindi, `s` skeleton on/off, `f` full
@@ -89,6 +93,9 @@ spotter would classify, so training clips look like live ones (`--no-balance`, `
 
 Spotter tuning (Day 3): `--on`, `--off` and `--quiet-frames` set the motion thresholds shown at the top of
 the window.
+
+Speed (Day 4): on quit the app prints the average frame rate (TC-01) and the latency from the hands stopping
+to the sign being accepted (TC-14); `--complexity 0` uses MediaPipe's fastest model (fallback F5).
 
 Before any model is trained, `python -m signvaani.app --preview` opens the camera with the skeleton, the
 motion value and a count of detected signs. It checks the camera, MediaPipe and the spotter; it does not
@@ -113,6 +120,7 @@ Dataset). `signvaani.make_synthetic` only feeds the automated tests; never train
 | `signvaani/check_install.py`, `check_data.py` | Install check; recorded-data check and wrist-path plots |
 | `signvaani/qc.py`, `dataset_stats.py` | Quality control (weak takes, possible wrong signs, re-record list); dataset statistics (Table R1) |
 | `signvaani/confusion.py` | Confusion matrices per fold, most confused pairs with a reason hint (Tables R3, R6) |
+| `signvaani/experiments.py` | Model comparison and ablation runs (Tables R2, R4) |
 | `signvaani/include_dataset.py` | INCLUDE download and video-to-keypoint conversion |
 | `configs/vocabulary.json`, `sentences.json` | Frozen sign list (15 signs + IDLE) and demo sentences S1-S10 |
 
