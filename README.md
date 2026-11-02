@@ -27,7 +27,7 @@ Webcam -> MediaPipe Holistic (hands, pose, face) -> 63 landmarks -> normalise + 
 | `bug_bash.md` | Day 5 bug bash: who tests what, severity, issue list |
 | `test_cases.md` | System test cases TC-01 to TC-18: how to run, expected result, linked unit tests, results columns |
 | `SRS.md`, `diagrams/` | Software requirements with traceability; architecture, DFD 0, use-case and sequence diagrams (`.drawio` + `.svg` + `.png`) |
-| `presentation_content.md` | Slide-by-slide content for the review PPT (college template order), with speaker notes |
+| `presentation_content.md`, `SignVaani_PPT_Content.pdf` | Slide-by-slide content for the review PPT (college template order), with speaker notes; the PDF also shows the diagrams |
 | `results/` | Measured tables for the report (dataset stats, baselines, confused pairs), added as each day produces them |
 | `recording_protocol.md` | Recording session checklist, consent form and consent register |
 | `sign_verification.md` | Sign references, ISL-user check and Hindi sentence check |
