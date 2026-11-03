@@ -94,6 +94,19 @@ python -m signvaani.record --signer s06 --takes 3 --out data/unseen
 python -m signvaani.evaluate --ckpt models/best.pt --data data/unseen --signers s06 --out docs/results/s06
 ```
 
+### Check signs in video files
+
+```bash
+# one sign per video: prints the top-3 signs of each video; videos in sign folders also give the accuracy
+python -m signvaani.predict_video --model models/sign_model.onnx --videos my_sign.mp4
+python -m signvaani.predict_video --model models/adjectives.pt --videos path/to/Adjectives_4of8 --include-split test --out runs/videos.csv
+# several signs in one video: the live app plays the file instead of the webcam
+python -m signvaani.app --model models/sign_model.onnx --video my_sentence.mp4
+```
+
+`--include-split test` keeps only INCLUDE's official test videos, which training never saw; videos the
+model was trained on give a higher, misleading score.
+
 Live app keys: `SPACE` speak, `c` clear, `u` undo, `l` switch English/Hindi, `s` skeleton on/off, `f` full
 screen on/off, `q` quit. The window can also be resized or maximised (`--fullscreen` starts in full screen).
 
@@ -125,7 +138,8 @@ Dataset). `signvaani.make_synthetic` only feeds the automated tests; never train
 | `signvaani/spotter.py` | Real-time sign start/end detection |
 | `signvaani/sentence.py`, `rules.json` | ISL gloss order -> English / Hindi sentences |
 | `signvaani/speech.py` | Text-to-speech (pyttsx3 offline English, gTTS Hindi with offline cache), S1-S10 demo |
-| `signvaani/record.py`, `app.py` | Guided recorder and live app |
+| `signvaani/record.py`, `app.py` | Guided recorder and live app (webcam, or a video file with `--video`) |
+| `signvaani/predict_video.py` | Sign in each video file (top-3), with accuracy for videos in sign folders |
 | `signvaani/check_install.py`, `check_data.py` | Install check; recorded-data check and wrist-path plots |
 | `signvaani/qc.py`, `dataset_stats.py` | Quality control (weak takes, possible wrong signs, re-record list); dataset statistics (Table R1) |
 | `signvaani/confusion.py` | Confusion matrices per fold, most confused pairs with a reason hint (Tables R3, R6) |

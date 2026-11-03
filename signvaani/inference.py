@@ -26,6 +26,9 @@ class SignClassifier:
         self.seq_len = meta["seq_len"]
         # an ablation model only saw some landmark groups: hide the others the same way
         self.parts, self.velocity = meta.get("parts", ALL_GROUPS), meta.get("velocity", True)
+        # whether training cut each clip to the spotter's window (spotter.trim_to_sign); whole clips are
+        # classified the same way (predict_video, evaluate)
+        self.trim = bool(meta.get("trim"))
 
     def __call__(self, features):
         """features: (seq_len, FEATURE_DIM) -> probability per label."""

@@ -28,6 +28,12 @@ the camera's own delay, so the filmed TC-14 measurement stays the official one.
 --preview needs no trained model. It shows the skeleton, the motion value and every sign the spotter
 detects (as SIGN, with a count), so the camera, MediaPipe and the spotter thresholds can be checked
 before Day 3. It does not recognise which sign it is and does not speak.
+
+--video plays a video file instead of the webcam, through the same spotter, model, sentence and keys:
+    python -m signvaani.app --model models/sign_model.onnx --video my_sentence.mp4
+Frames are mirrored and padded to 4:3 like the webcam and INCLUDE clips. When the video ends the screen
+goes black so the last sign can finish; the signs and the sentence stay until q (SPACE speaks them).
+For a folder of one-sign videos, signvaani.predict_video gives each video's sign and the accuracy.
 """
 import argparse
 import csv
@@ -39,6 +45,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from .include_dataset import pad_to_aspect
 from .inference import SignClassifier
 from .landmarks import frame_keypoints
 from .sentence import SentenceBuilder
@@ -129,6 +136,7 @@ def main(argv=None):
     p.add_argument("--auto-speak", action="store_true")
     p.add_argument("--pause", type=float, default=2.5)
     p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--video", help="play this video file instead of the webcam")
     p.add_argument("--fullscreen", action="store_true", help="start in full screen (f toggles it)")
     p.add_argument("--preview", action="store_true",
                    help="no model needed: camera, skeleton and sign detection only, nothing is recognised")
@@ -139,6 +147,8 @@ def main(argv=None):
     if not args.preview and not Path(args.model).is_file():
         p.error(f"no model at {args.model}: train one first (docs/day3.md), or check the camera, skeleton and "
                 "sign detection without a model: python -m signvaani.app --preview")
+    if args.video and not Path(args.video).is_file():
+        p.error(f"no video at {args.video}")
 
     clf = MotionOnly() if args.preview else SignClassifier(args.model)
     spotter = SignSpotter(clf, on_threshold=args.on, off_threshold=args.off, quiet_frames=args.quiet_frames,
@@ -146,7 +156,12 @@ def main(argv=None):
     builder = SentenceBuilder()
     glosses, last_sign_t, lang, show_skel = [], time.time(), args.lang, True
     holistic_mod, draw = mp.solutions.holistic, mp.solutions.drawing_utils
-    cap = cv2.VideoCapture(args.camera)
+    cap = cv2.VideoCapture(args.video or args.camera)
+    if args.video and not cap.isOpened():
+        p.error(f"cannot read the video {args.video}")
+    # the spotter's motion thresholds are per frame at about 30 FPS: a 60 FPS video uses every 2nd frame
+    step = max(1, round((cap.get(cv2.CAP_PROP_FPS) or 30) / 30)) if args.video else 1
+    blank, ended = None, False  # after a video ends: black frames let the last sign close
     fps_t, fps = time.time(), 0.0
     window, full = "SignVaani", args.fullscreen
     shown_probs, verdict = None, None  # the last classified window, and whether its sign was added
@@ -165,11 +180,24 @@ def main(argv=None):
 
     with holistic_mod.Holistic(model_complexity=args.complexity) as holistic:
         while True:
+            for _ in range(step - 1):
+                cap.grab()
             ok, frame = cap.read()
             if not ok:
-                break
+                if blank is None:  # webcam lost, or a video without a single frame
+                    break
+                if not ended:
+                    ended = True
+                    print("end of video: SPACE speaks the sentence, q quits")
+                frame = blank
+            elif args.video:
+                blank = np.zeros_like(frame) if blank is None else blank
             captured, frames = time.time(), frames + 1
             frame = cv2.flip(frame, 1)
+            if args.video:  # same shape and size as the webcam: 4:3, 640 x 480
+                frame = pad_to_aspect(frame, 4 / 3)
+                if frame.shape[1] != 640:
+                    frame = cv2.resize(frame, (640, 480))
             res = holistic.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             kp = frame_keypoints(res)
 

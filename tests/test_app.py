@@ -74,10 +74,16 @@ class Screen:
 
 @pytest.fixture
 def app(monkeypatch):
-    def run(argv, xs=(), frames=80, keys=(), classifier=None, patches=None):
+    def run(argv, xs=(), frames=80, keys=(), classifier=None, patches=None, camera=None):
         screen = Screen(frames, keys)
-        camera = Point(read=lambda: (True, np.zeros((480, W, 3), np.uint8)), release=lambda: None)
-        cv2 = Point(FONT_HERSHEY_SIMPLEX=0, LINE_AA=0, COLOR_BGR2RGB=0, VideoCapture=lambda index: camera,
+        camera = camera or Point(read=lambda: (True, np.zeros((480, W, 3), np.uint8)), release=lambda: None)
+        screen.sources = []  # what VideoCapture was opened with: a camera index or a video path
+
+        def capture(source):
+            screen.sources.append(source)
+            return camera
+
+        cv2 = Point(FONT_HERSHEY_SIMPLEX=0, LINE_AA=0, COLOR_BGR2RGB=0, VideoCapture=capture, CAP_PROP_FPS=5,
                     flip=lambda frame, code: frame, cvtColor=lambda frame, code: frame, putText=screen.putText,
                     imshow=screen.imshow, waitKey=screen.waitKey, destroyAllWindows=lambda: None,
                     namedWindow=screen.namedWindow, setWindowProperty=screen.setWindowProperty,
@@ -114,6 +120,57 @@ def test_preview_runs_without_a_model_and_counts_signs(app):
     assert seen and "Signs: SIGN|" in seen[0]
     assert not any("2 signs detected" in t for t in screen.shown)
     assert "0 signs detected" in screen.shown[-1] and spoken == []  # SPACE clears, never speaks
+
+
+class VideoFile:
+    """Fake cv2.VideoCapture over a video file: `n` frames at `fps`, then nothing more."""
+
+    def __init__(self, n, fps=30):
+        self.left, self.fps, self.grabbed = n, fps, 0
+
+    def isOpened(self):
+        return True
+
+    def get(self, prop):
+        return self.fps
+
+    def grab(self):
+        self.grabbed += 1
+        self.left -= 1
+        return self.left >= 0
+
+    def read(self):
+        self.left -= 1
+        return (True, np.zeros((480, W, 3), np.uint8)) if self.left >= 0 else (False, None)
+
+    def release(self):
+        pass
+
+
+def test_video_file_plays_to_the_end_and_its_last_sign_still_counts(app, tmp_path, capsys):
+    video = tmp_path / "sentence.mp4"
+    video.write_bytes(b"")
+    xs = [0.5] * 10 + list(0.5 + 0.1 * np.sin(np.linspace(0, 4 * np.pi, 25)))  # the video ends mid-sign
+    camera = VideoFile(len(xs))
+    screen, _ = app(["--preview", "--video", str(video)], xs, frames=80, camera=camera)
+    assert screen.sources == [str(video)] and camera.grabbed == 0  # 30 FPS: every frame is used
+    assert "end of video: SPACE speaks the sentence, q quits" in capsys.readouterr().out
+    assert len(screen.shown) == 80  # the window stays open after the end, until q
+    assert "1 signs detected" in screen.shown[-1]  # frames after the end let the last sign close
+
+
+def test_a_60_fps_video_uses_every_second_frame(app, tmp_path):
+    video = tmp_path / "phone.mp4"
+    video.write_bytes(b"")
+    camera = VideoFile(40, fps=60)
+    app(["--preview", "--video", str(video)], frames=10, camera=camera)
+    assert camera.grabbed == 10  # one frame skipped before each frame read
+
+
+def test_missing_video_says_so(app, capsys):
+    with pytest.raises(SystemExit):
+        app(["--preview", "--video", "no_such_video.mp4"])
+    assert "no video at no_such_video.mp4" in capsys.readouterr().err
 
 
 def test_preview_stays_quiet_without_motion(app):
